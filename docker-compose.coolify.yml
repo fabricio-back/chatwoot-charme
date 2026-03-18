@@ -1,9 +1,8 @@
 version: '3'
 services:
   rails:
-    build:
-      context: .
-      dockerfile: Dockerfile.full
+    image: 'ghcr.io/fabricio-back/chatwoot-saleshub:latest'
+    pull_policy: always
     volumes:
       - 'storage:/app/storage'
     depends_on:
@@ -56,9 +55,8 @@ services:
       timeout: 20s
       retries: 10
   sidekiq:
-    build:
-      context: .
-      dockerfile: Dockerfile.full
+    image: 'ghcr.io/fabricio-back/chatwoot-saleshub:latest'
+    pull_policy: always
     volumes:
       - 'storage:/app/storage'
     depends_on:
