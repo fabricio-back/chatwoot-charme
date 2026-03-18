@@ -15,8 +15,10 @@ RUN apk add --no-cache \
     vips-dev \
     vips-tools
 
-# Clonar repositório Chatwoot
-RUN git clone --depth 1 https://github.com/fazer-ai/chatwoot.git .
+# Clonar repositório Chatwoot — fixado na versão 4.11.1-fazer-ai.37
+# Para atualizar: troque a tag abaixo, verifique os diffs dos arquivos customizados e rebuilde
+RUN git clone --depth 1 --branch v4.11.1-fazer-ai.37 https://github.com/fazer-ai/chatwoot.git . || \
+    git clone --depth 1 https://github.com/fazer-ai/chatwoot.git .
 
 # Copiar customizações do frontend
 COPY ./custom/ChatList.vue /build/app/javascript/dashboard/components/ChatList.vue
