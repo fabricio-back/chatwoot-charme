@@ -31,9 +31,9 @@ COPY ./custom/theme-colors.js /build/theme/colors.js
 COPY ./custom/conversations_getters.js /build/app/javascript/dashboard/store/modules/conversations/getters.js
 # v1.11 — applyRoleFilter: agentes só veem conversas onde são assignee ou participantes
 COPY ./custom/conversations_helpers.js /build/app/javascript/dashboard/store/modules/conversations/helpers.js
-# Instalar pnpm via corepack
+# Instalar pnpm via corepack (versão fixada para evitar incompatibilidade)
 RUN corepack enable && \
-    corepack prepare pnpm@latest --activate
+    corepack prepare pnpm@9.15.4 --activate
 
 # Instalar dependências Node
 RUN pnpm install --frozen-lockfile
@@ -41,9 +41,9 @@ RUN pnpm install --frozen-lockfile
 # Build dos assets do frontend
 ENV NODE_ENV=production
 ENV RAILS_ENV=production
-# Build SDK e App (Vite)
+# Build SDK e App (Vite via pnpm para usar a versão correta do projeto)
 RUN pnpm run build:sdk && \
-    npx vite build
+    pnpm run build
 
 # ========================================
 # Stage 2: Imagem Final com Assets
