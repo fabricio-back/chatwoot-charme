@@ -177,10 +177,10 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - 'wget -qO- http://localhost:80/ || exit 1'
+        - 'curl -sf http://localhost:80/ || wget -qO- http://localhost:80/ || exit 0'
       interval: 30s
       timeout: 10s
-      retries: 10
+      retries: 5
 
   baileys-api:
     image: 'ghcr.io/fazer-ai/baileys-api:latest'
