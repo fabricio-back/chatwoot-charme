@@ -177,7 +177,12 @@ services:
       - 'API_URL=${KANBAN_BACKEND_URL}'
     restart: always
     healthcheck:
-      disable: true
+      test:
+        - CMD-SHELL
+        - 'wget -qO- http://localhost:80/nginx-health || exit 1'
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   baileys-api:
     image: 'ghcr.io/fazer-ai/baileys-api:latest'
