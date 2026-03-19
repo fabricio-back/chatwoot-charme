@@ -43,9 +43,7 @@ ENV NODE_ENV=production
 ENV RAILS_ENV=production
 # Build SDK e App (Vite via pnpm para usar a versão correta do projeto)
 RUN pnpm run build:sdk && \
-    pnpm run build
-
-# ========================================
+    pnpm exec vite build
 # Stage 2: Imagem Final com Assets
 # ========================================
 FROM ghcr.io/fazer-ai/chatwoot:latest
