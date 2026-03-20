@@ -1,6 +1,6 @@
 ﻿<script setup>
 /* global axios */
-import { ref, watch, onUnmounted, nextTick, computed } from 'vue';
+import { ref, watch, onUnmounted, nextTick } from 'vue';
 import { useMapGetter } from 'dashboard/composables/store';
 import { useAccount } from 'dashboard/composables/useAccount';
 
@@ -9,12 +9,11 @@ const emit = defineEmits(['close']);
 const { accountId } = useAccount();
 const currentUser = useMapGetter('getCurrentUser');
 
-// ─── State ──────────────────────────────────────────────────────────────────
-const activeTab = ref('conversations'); // 'conversations' | 'agents'
+const activeTab = ref('conversations');
 const agents = ref([]);
 const myConversations = ref([]);
-const selectedAgents = ref([]); // for group selection
-const openConversation = ref(null); // { id, title }
+const selectedAgents = ref([]);
+const openConversation = ref(null);
 const messages = ref([]);
 const newMessage = ref('');
 const inboxId = ref(null);
@@ -26,82 +25,65 @@ let pollTimer = null;
 
 const INBOX_NAME = 'Chat Interno';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-const pairKey = (idA, idB) =>
-  [Math.min(idA, idB), Math.max(idA, idB)].join('-');
-
 const agentInitial = (name) => (name || '?')[0].toUpperCase();
 
 const agentColor = (id) => {
-  const palette = [
-    '#aa0101','#b45309','#047857','#1d4ed8','#6d28d9',
-    '#be185d','#0891b2','#65a30d','#7c3aed','#dc2626',
-  ];
-  return palette[Math.abs(id) % palette.length];
+  const p = ['#aa0101','#b45309','#047857','#1d4ed8','#6d28d9','#be185d','#0891b2','#65a30d','#7c3aed','#dc2626'];
+  return p[Math.abs(id) % p.length];
 };
 
 const formatTime = (ts) => {
   if (!ts) return '';
   const d = new Date(ts * 1000);
   const now = new Date();
-  const sameDay = d.toDateString() === now.toDateString();
-  return sameDay
+  return d.toDateString() === now.toDateString()
     ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 };
 
 const isMyMessage = (msg) => msg.sender?.id === currentUser.value?.id;
 
-const toggleAgentSelection = (agent) => {
+const toggleAgent = (agent) => {
   const idx = selectedAgents.value.findIndex((a) => a.id === agent.id);
   if (idx === -1) selectedAgents.value.push(agent);
   else selectedAgents.value.splice(idx, 1);
 };
-const isAgentSelected = (agent) =>
-  selectedAgents.value.some((a) => a.id === agent.id);
 
-// ─── API: setup ───────────────────────────────────────────────────────────────
+const isSelected = (agent) => selectedAgents.value.some((a) => a.id === agent.id);
+
 const fetchInbox = async () => {
+  if (!accountId.value) return;
   const res = await axios.get(`/api/v1/accounts/${accountId.value}/inboxes`);
   const list = res.data?.payload || [];
   let inbox = list.find((i) => i.name === INBOX_NAME);
   if (!inbox) {
     if (currentUser.value?.role !== 'administrator') return;
-    const created = await axios.post(
-      `/api/v1/accounts/${accountId.value}/inboxes`,
-      { name: INBOX_NAME, channel: { type: 'api', webhook_url: '' } }
-    );
+    const created = await axios.post(`/api/v1/accounts/${accountId.value}/inboxes`, {
+      name: INBOX_NAME,
+      channel: { type: 'api', webhook_url: '' },
+    });
     inbox = created.data;
   }
   inboxId.value = inbox.id;
 };
 
 const fetchAgents = async () => {
+  if (!accountId.value) return;
   const res = await axios.get(`/api/v1/accounts/${accountId.value}/agents`);
   agents.value = (res.data || []).filter((a) => a.id !== currentUser.value?.id);
 };
 
-// ─── API: conversations tab ───────────────────────────────────────────────────
 const fetchMyConversations = async () => {
-  if (!inboxId.value) return;
+  if (!inboxId.value || !accountId.value) return;
   try {
-    const res = await axios.get(
-      `/api/v1/accounts/${accountId.value}/conversations`,
-      {
-        params: {
-          inbox_id: inboxId.value,
-          assignee_type: 'assigned',
-          status: 'open',
-          page: 1,
-        },
-      }
-    );
+    const res = await axios.get(`/api/v1/accounts/${accountId.value}/conversations`, {
+      params: { inbox_id: inboxId.value, assignee_type: 'assigned', status: 'open', page: 1 },
+    });
     const all = res.data?.data?.payload || [];
+    const myId = currentUser.value?.id;
     myConversations.value = all.filter((c) => {
-      const isAssignee = c.meta?.assignee?.id === currentUser.value?.id;
-      const isParticipant = (c.participants || []).some(
-        (p) => p.id === currentUser.value?.id
-      );
+      const isAssignee = c.meta?.assignee?.id === myId;
+      const isParticipant = (c.participants || []).some((p) => p.id === myId);
       return isAssignee || isParticipant;
     });
   } catch {
@@ -111,8 +93,7 @@ const fetchMyConversations = async () => {
 
 const convTitle = (conv) => {
   const name = conv.meta?.sender?.name || '';
-  return name.startsWith('DM: ') ? name.slice(4) :
-         name.startsWith('Grupo: ') ? name : name || `#${conv.id}`;
+  return name.startsWith('DM: ') ? name.slice(4) : name || `#${conv.id}`;
 };
 
 const convPreview = (conv) => {
@@ -122,8 +103,8 @@ const convPreview = (conv) => {
   return prefix + last.content.slice(0, 60) + (last.content.length > 60 ? '…' : '');
 };
 
-// ─── API: open a conversation ─────────────────────────────────────────────────
 const openConv = async (conv) => {
+  if (!accountId.value) return;
   openConversation.value = { id: conv.id, title: convTitle(conv) };
   messages.value = [];
   errorMsg.value = '';
@@ -134,38 +115,70 @@ const openConv = async (conv) => {
   startPoll(conv.id);
 };
 
-// ─── API: start new conversation ─────────────────────────────────────────────
+const findOrCreateContact = async (email, name) => {
+  try {
+    const res = await axios.get(`/api/v1/accounts/${accountId.value}/contacts/search`, {
+      params: { q: email, include_contacts: true },
+    });
+    const list = res.data?.payload || [];
+    if (list.length > 0) return list[0].id;
+  } catch { /* fall through */ }
+  const created = await axios.post(`/api/v1/accounts/${accountId.value}/contacts`, {
+    name,
+    email,
+    account_id: accountId.value,
+  });
+  return created.data.id;
+};
+
+const findOrCreateConversation = async (contactId, participantIds) => {
+  if (!contactId) throw new Error('contactId indefinido');
+  const res = await axios.get(
+    `/api/v1/accounts/${accountId.value}/contacts/${contactId}/conversations`
+  );
+  const convs = res.data?.payload || [];
+  const existing = convs.find((c) => c.inbox_id === inboxId.value);
+  if (existing) return existing.id;
+  const created = await axios.post(`/api/v1/accounts/${accountId.value}/conversations`, {
+    inbox_id: inboxId.value,
+    contact_id: contactId,
+    assignee_id: currentUser.value?.id,
+  });
+  const convId = created.data.id;
+  const all = [currentUser.value?.id, ...(participantIds || [])].filter(Boolean);
+  await axios
+    .post(`/api/v1/accounts/${accountId.value}/conversations/${convId}/participants`, { user_ids: all })
+    .catch(() => {});
+  return convId;
+};
+
 const startConversation = async () => {
-  if (!selectedAgents.value.length) return;
+  if (!selectedAgents.value.length || !accountId.value || !currentUser.value?.id) return;
   loading.value = true;
   errorMsg.value = '';
   stopPoll();
   try {
     if (!inboxId.value) await fetchInbox();
-    const myId = currentUser.value?.id;
+    const myId = currentUser.value.id;
     let contactId, title;
-
     if (selectedAgents.value.length === 1) {
       const other = selectedAgents.value[0];
-      const pair = pairKey(myId, other.id);
-      const email = `internal-dm-${pair}@system.local`;
+      const pair = [Math.min(myId, other.id), Math.max(myId, other.id)].join('-');
       contactId = await findOrCreateContact(
-        email,
-        `DM: ${currentUser.value?.name || 'Eu'} & ${other.name}`
+        `internal-dm-${pair}@system.local`,
+        `DM: ${currentUser.value.name || 'Eu'} & ${other.name}`
       );
       title = other.name;
     } else {
       const ids = [myId, ...selectedAgents.value.map((a) => a.id)].sort();
-      const email = `internal-group-${ids.join('-')}@system.local`;
-      const names = [currentUser.value?.name || 'Eu', ...selectedAgents.value.map((a) => a.name)];
-      contactId = await findOrCreateContact(email, `Grupo: ${names.join(', ')}`);
+      const names = [currentUser.value.name || 'Eu', ...selectedAgents.value.map((a) => a.name)];
+      contactId = await findOrCreateContact(
+        `internal-group-${ids.join('-')}@system.local`,
+        `Grupo: ${names.join(', ')}`
+      );
       title = `Grupo: ${selectedAgents.value.map((a) => a.name).join(', ')}`;
     }
-
-    const convId = await findOrCreateConversation(
-      contactId,
-      selectedAgents.value.map((a) => a.id)
-    );
+    const convId = await findOrCreateConversation(contactId, selectedAgents.value.map((a) => a.id));
     openConversation.value = { id: convId, title };
     messages.value = [];
     selectedAgents.value = [];
@@ -180,53 +193,9 @@ const startConversation = async () => {
   }
 };
 
-const findOrCreateContact = async (email, name) => {
-  try {
-    const res = await axios.get(
-      `/api/v1/accounts/${accountId.value}/contacts/search`,
-      { params: { q: email, include_contacts: true } }
-    );
-    const list = res.data?.payload || [];
-    if (list.length > 0) return list[0].id;
-  } catch { /* fall through */ }
-  const created = await axios.post(
-    `/api/v1/accounts/${accountId.value}/contacts`,
-    { name, email, account_id: accountId.value }
-  );
-  return created.data.id;
-};
-
-const findOrCreateConversation = async (contactId, participantIds) => {
-  const res = await axios.get(
-    `/api/v1/accounts/${accountId.value}/contacts/${contactId}/conversations`
-  );
-  const convs = res.data?.payload || [];
-  const existing = convs.find((c) => c.inbox_id === inboxId.value);
-  if (existing) return existing.id;
-
-  const created = await axios.post(
-    `/api/v1/accounts/${accountId.value}/conversations`,
-    {
-      inbox_id: inboxId.value,
-      contact_id: contactId,
-      assignee_id: currentUser.value?.id,
-    }
-  );
-  const convId = created.data.id;
-  const all = [currentUser.value?.id, ...participantIds].filter(Boolean);
-  await axios
-    .post(
-      `/api/v1/accounts/${accountId.value}/conversations/${convId}/participants`,
-      { user_ids: all }
-    )
-    .catch(() => {});
-  return convId;
-};
-
-// ─── Messages ─────────────────────────────────────────────────────────────────
 const fetchMessages = async (convId) => {
   const id = convId || openConversation.value?.id;
-  if (!id) return;
+  if (!id || !accountId.value) return;
   try {
     const res = await axios.get(
       `/api/v1/accounts/${accountId.value}/conversations/${id}/messages`
@@ -243,7 +212,7 @@ const fetchMessages = async (convId) => {
 
 const sendMessage = async () => {
   const text = newMessage.value.trim();
-  if (!text || sending.value || !openConversation.value) return;
+  if (!text || sending.value || !openConversation.value || !accountId.value) return;
   newMessage.value = '';
   sending.value = true;
   try {
@@ -259,7 +228,6 @@ const sendMessage = async () => {
   }
 };
 
-// ─── Poll ─────────────────────────────────────────────────────────────────────
 const startPoll = (convId) => {
   stopPoll();
   pollTimer = setInterval(() => fetchMessages(convId), 3000);
@@ -268,14 +236,12 @@ const stopPoll = () => {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 };
 
-// ─── Scroll ───────────────────────────────────────────────────────────────────
 const scrollBottom = () => {
   nextTick(() => {
     if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
   });
 };
 
-// ─── Navigation ──────────────────────────────────────────────────────────────
 const backFromConversation = () => {
   stopPoll();
   openConversation.value = null;
@@ -289,11 +255,10 @@ watch(activeTab, (tab) => {
   if (tab === 'conversations') fetchMyConversations();
 });
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
 watch(
   () => currentUser.value?.id,
   async (id) => {
-    if (!id) return;
+    if (!id || !accountId.value) return;
     await fetchInbox().catch(() => {});
     await Promise.all([fetchAgents(), fetchMyConversations()]);
   },
@@ -328,22 +293,14 @@ onUnmounted(stopPoll);
   <div v-if="!openConversation" class="flex border-b border-n-weak flex-shrink-0">
     <button
       class="flex-1 py-2 text-xs font-medium transition-colors border-b-2"
-      :class="
-        activeTab === 'conversations'
-          ? 'border-n-brand text-n-brand'
-          : 'border-transparent text-n-slate-11 hover:text-n-slate-12'
-      "
+      :class="activeTab === 'conversations' ? 'border-n-brand text-n-brand' : 'border-transparent text-n-slate-11 hover:text-n-slate-12'"
       @click="activeTab = 'conversations'"
     >
       Conversas
     </button>
     <button
       class="flex-1 py-2 text-xs font-medium transition-colors border-b-2"
-      :class="
-        activeTab === 'agents'
-          ? 'border-n-brand text-n-brand'
-          : 'border-transparent text-n-slate-11 hover:text-n-slate-12'
-      "
+      :class="activeTab === 'agents' ? 'border-n-brand text-n-brand' : 'border-transparent text-n-slate-11 hover:text-n-slate-12'"
       @click="activeTab = 'agents'"
     >
       Agentes
@@ -360,10 +317,7 @@ onUnmounted(stopPoll);
   </div>
 
   <!-- TAB: Conversas -->
-  <div
-    v-if="!openConversation && activeTab === 'conversations'"
-    class="flex-1 overflow-y-auto"
-  >
+  <div v-if="!openConversation && activeTab === 'conversations'" class="flex-1 overflow-y-auto">
     <div
       v-if="!myConversations.length"
       class="flex flex-col items-center justify-center h-32 text-n-slate-10 text-xs gap-2 text-center px-4"
@@ -378,9 +332,7 @@ onUnmounted(stopPoll);
       class="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-n-alpha-2 transition-colors text-left min-w-0"
       @click="openConv(conv)"
     >
-      <div
-        class="flex items-center justify-center size-8 rounded-full flex-shrink-0 text-white bg-n-brand"
-      >
+      <div class="flex items-center justify-center size-8 rounded-full flex-shrink-0 text-white bg-n-brand">
         <span class="i-lucide-message-square-text size-4" />
       </div>
       <div class="flex-1 min-w-0">
@@ -394,15 +346,9 @@ onUnmounted(stopPoll);
   </div>
 
   <!-- TAB: Agentes -->
-  <div
-    v-if="!openConversation && activeTab === 'agents'"
-    class="flex-1 overflow-y-auto flex flex-col min-h-0"
-  >
+  <div v-if="!openConversation && activeTab === 'agents'" class="flex-1 overflow-y-auto flex flex-col min-h-0">
     <div class="flex-1 overflow-y-auto">
-      <div
-        v-if="!agents.length"
-        class="flex items-center justify-center h-24 text-n-slate-10 text-xs gap-2"
-      >
+      <div v-if="!agents.length" class="flex items-center justify-center h-24 text-n-slate-10 text-xs gap-2">
         <span class="i-lucide-loader-circle size-4 animate-spin" />
         Carregando agentes...
       </div>
@@ -410,8 +356,8 @@ onUnmounted(stopPoll);
         v-for="agent in agents"
         :key="agent.id"
         class="flex items-center gap-3 w-full px-3 py-2.5 hover:bg-n-alpha-2 transition-colors text-left min-w-0"
-        :class="{ 'bg-n-alpha-2': isAgentSelected(agent) }"
-        @click="toggleAgentSelection(agent)"
+        :class="{ 'bg-n-alpha-2': isSelected(agent) }"
+        @click="toggleAgent(agent)"
       >
         <div
           class="flex items-center justify-center size-8 rounded-full flex-shrink-0 text-white font-semibold text-xs"
@@ -421,20 +367,16 @@ onUnmounted(stopPoll);
         </div>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium text-n-slate-12 truncate">{{ agent.name }}</div>
-          <div class="text-xs text-n-slate-10">
-            {{ agent.role === 'administrator' ? 'Administrador' : 'Agente' }}
-          </div>
+          <div class="text-xs text-n-slate-10">{{ agent.role === 'administrator' ? 'Administrador' : 'Agente' }}</div>
         </div>
         <div
           class="size-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors"
-          :class="isAgentSelected(agent) ? 'bg-n-brand border-n-brand' : 'border-n-weak'"
+          :class="isSelected(agent) ? 'bg-n-brand border-n-brand' : 'border-n-weak'"
         >
-          <span v-if="isAgentSelected(agent)" class="i-lucide-check size-3 text-white" />
+          <span v-if="isSelected(agent)" class="i-lucide-check size-3 text-white" />
         </div>
       </button>
     </div>
-
-    <!-- Barra de ação -->
     <Transition
       enter-active-class="transition-all duration-150 ease-out"
       enter-from-class="opacity-0 translate-y-2"
@@ -449,9 +391,7 @@ onUnmounted(stopPoll);
       >
         <div class="flex-1 min-w-0">
           <div class="text-xs font-medium text-n-slate-12 truncate">
-            {{ selectedAgents.length === 1
-              ? selectedAgents[0].name
-              : `Grupo com ${selectedAgents.length} agentes` }}
+            {{ selectedAgents.length === 1 ? selectedAgents[0].name : `Grupo com ${selectedAgents.length} agentes` }}
           </div>
           <div class="text-[10px] text-n-slate-10">
             {{ selectedAgents.length === 1 ? 'Conversa 1:1' : 'Conversa em grupo' }}
@@ -474,9 +414,8 @@ onUnmounted(stopPoll);
   <template v-if="openConversation">
     <div v-if="loading" class="flex items-center justify-center flex-1 text-n-slate-10 gap-2 text-sm">
       <span class="i-lucide-loader-circle size-5 animate-spin" />
-      Carregando mensagens...
+      Carregando...
     </div>
-
     <div v-else ref="messagesEl" class="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
       <div
         v-for="msg in messages"
@@ -486,32 +425,21 @@ onUnmounted(stopPoll);
       >
         <div
           class="max-w-[80%] rounded-2xl px-3 py-2 text-sm break-words"
-          :class="
-            isMyMessage(msg)
-              ? 'bg-n-brand text-white rounded-br-sm'
-              : 'bg-n-alpha-2 text-n-slate-12 rounded-bl-sm'
-          "
+          :class="isMyMessage(msg) ? 'bg-n-brand text-white rounded-br-sm' : 'bg-n-alpha-2 text-n-slate-12 rounded-bl-sm'"
         >
           <p v-if="!isMyMessage(msg)" class="text-[10px] font-medium opacity-70 mb-0.5 leading-none">
             {{ msg.sender?.name || 'Agente' }}
           </p>
           <p class="leading-snug whitespace-pre-wrap">{{ msg.content }}</p>
-          <span
-            class="text-[10px] block mt-1 opacity-70"
-            :class="isMyMessage(msg) ? 'text-right' : 'text-left'"
-          >
+          <span class="text-[10px] block mt-1 opacity-70" :class="isMyMessage(msg) ? 'text-right' : 'text-left'">
             {{ formatTime(msg.created_at) }}
           </span>
         </div>
       </div>
-      <div
-        v-if="!messages.length"
-        class="flex-1 flex items-center justify-center text-n-slate-10 text-sm text-center py-8"
-      >
+      <div v-if="!messages.length" class="flex-1 flex items-center justify-center text-n-slate-10 text-sm text-center py-8">
         Nenhuma mensagem ainda.<br />Diga olá! 👋
       </div>
     </div>
-
     <div class="flex items-center gap-2 px-3 py-2 border-t border-n-weak flex-shrink-0">
       <input
         v-model="newMessage"
@@ -522,11 +450,7 @@ onUnmounted(stopPoll);
       />
       <button
         class="flex items-center justify-center size-8 rounded-lg transition-colors flex-shrink-0"
-        :class="
-          newMessage.trim() && !sending
-            ? 'bg-n-brand text-white hover:opacity-90'
-            : 'bg-n-alpha-2 text-n-slate-9 cursor-not-allowed'
-        "
+        :class="newMessage.trim() && !sending ? 'bg-n-brand text-white hover:opacity-90' : 'bg-n-alpha-2 text-n-slate-9 cursor-not-allowed'"
         :disabled="!newMessage.trim() || sending || loading"
         @click="sendMessage"
       >
