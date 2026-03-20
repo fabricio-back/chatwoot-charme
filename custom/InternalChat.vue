@@ -116,19 +116,28 @@ const openConv = async (conv) => {
 };
 
 const findOrCreateContact = async (email, name) => {
+  const parseList = (p) => Array.isArray(p) ? p : (p?.contacts || []);
   try {
     const res = await axios.get(`/api/v1/accounts/${accountId.value}/contacts/search`, {
       params: { q: email, include_contacts: true },
     });
-    const list = res.data?.payload || [];
-    if (list.length > 0) return list[0].id;
+    const list = parseList(res.data?.payload);
+    if (list.length > 0 && list[0]?.id) return list[0].id;
   } catch { /* fall through */ }
-  const created = await axios.post(`/api/v1/accounts/${accountId.value}/contacts`, {
-    name,
-    email,
-    account_id: accountId.value,
-  });
-  return created.data.id;
+  try {
+    const created = await axios.post(`/api/v1/accounts/${accountId.value}/contacts`, {
+      name, email, account_id: accountId.value,
+    });
+    return created.data?.id || created.data?.contact?.id;
+  } catch {
+    // 422: contact may already exist — retry search
+    const retry = await axios.get(`/api/v1/accounts/${accountId.value}/contacts/search`, {
+      params: { q: email, include_contacts: true },
+    });
+    const list2 = parseList(retry.data?.payload);
+    if (list2.length > 0 && list2[0]?.id) return list2[0].id;
+    throw new Error('Nao foi possivel criar ou localizar o contato.');
+  }
 };
 
 const findOrCreateConversation = async (contactId, participantIds) => {
