@@ -35,6 +35,20 @@ COPY ./custom/conversations_getters.js /build/app/javascript/dashboard/store/mod
 COPY ./custom/conversations_helpers.js /build/app/javascript/dashboard/store/modules/conversations/helpers.js
 # Kanban de Etiquetas — substitui o paywall do kanban_view com implementação real
 COPY ./custom/KanbanIndex.vue /build/app/javascript/dashboard/routes/dashboard/kanban/Index.vue
+
+# -----------------------------------------------------------------------
+# Remover integrações fazer-ai indesejadas (kanban externo, conexões, etc.)
+# Neutraliza qualquer arquivo JS/TS/Vue que referencie kanban.moveisback.com.br
+# -----------------------------------------------------------------------
+RUN echo "=== Arquivos com referência ao kanban externo ===" && \
+    grep -rl "kanban\.moveisback\.com\.br" /build/app/javascript --include="*.js" --include="*.ts" --include="*.vue" 2>/dev/null || true
+RUN find /build/app/javascript -type f \( -name "*.js" -o -name "*.ts" -o -name "*.vue" \) \
+    -exec grep -l "kanban\.moveisback\.com\.br" {} \; 2>/dev/null | \
+    xargs -r sed -i \
+      -e 's|https://kanban\.moveisback\.com\.br[^"'\''`]*|http://localhost:65535|g' \
+      -e 's|http://kanban\.moveisback\.com\.br[^"'\''`]*|http://localhost:65535|g' \
+    && echo "Kanban URLs neutralizadas" || true
+
 # Instalar pnpm via corepack (versão fixada para evitar incompatibilidade)
 RUN corepack enable && \
     corepack prepare pnpm@9.15.4 --activate

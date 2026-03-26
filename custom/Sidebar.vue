@@ -712,12 +712,15 @@ const menuItems = computed(() => {
 
   // Filtrar DashboardApps indesejados do fazer-ai que não são usados
   const HIDDEN_APP_NAMES = [
-    'kanban', 'conexões', 'conexoes', 'chats internos',
-    'projetos', 'chatbot flows', 'config extra',
+    'kanban', 'conexões', 'conexoes', 'chats internos', 'chats_internos',
+    'projetos', 'chatbot flows', 'chatbot_flows', 'config extra', 'config_extra',
+    'connections', 'flows',
   ];
-  const visibleApps = dashboardApps.value.filter(
-    app => !HIDDEN_APP_NAMES.includes(app.title?.toLowerCase?.() ?? '')
-  );
+  const isHiddenApp = app => {
+    const title = (app.title ?? app.name ?? '').toLowerCase();
+    return HIDDEN_APP_NAMES.some(n => title.includes(n));
+  };
+  const visibleApps = dashboardApps.value.filter(app => !isHiddenApp(app));
 
   if (visibleApps.length > 0) {
     const settingsIndex = items.findIndex(item => item.name === 'Settings');
