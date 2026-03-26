@@ -15,10 +15,50 @@ const labels = useMapGetter('labels/getLabels');
 // columns: { [labelTitle]: { conversations, loading, color, title } }
 const columns = ref({});
 const isRefreshing = ref(false);
+
+// Card drag state
 const dragState = ref({ convId: null, fromLabel: null, conv: null });
 const dropTarget = ref('');
 
-// Initialize column structure from label list
+// Column order & visibility (persisted to localStorage)
+const columnOrder = ref([]);
+const hiddenColumns = ref(new Set());
+const showColumnManager = ref(false);
+
+// Column drag state
+const colDragState = ref({ from: null });
+const colDropTarget = ref('');
+
+// Card popup / notes
+const selectedCard = ref(null);
+const cardNote = ref('');
+const notes = ref({});
+
+// --- Persistence ---
+const storageKey = suffix => `kanban-${suffix}-${accountId.value}`;
+
+const loadPersisted = () => {
+  try {
+    const order = localStorage.getItem(storageKey('order'));
+    if (order) columnOrder.value = JSON.parse(order);
+    const hidden = localStorage.getItem(storageKey('hidden'));
+    if (hidden) hiddenColumns.value = new Set(JSON.parse(hidden));
+    const savedNotes = localStorage.getItem(storageKey('notes'));
+    if (savedNotes) notes.value = JSON.parse(savedNotes);
+  } catch { /* ignore */ }
+};
+
+const saveOrder = () => {
+  try { localStorage.setItem(storageKey('order'), JSON.stringify(columnOrder.value)); } catch { /**/ }
+};
+const saveHidden = () => {
+  try { localStorage.setItem(storageKey('hidden'), JSON.stringify([...hiddenColumns.value])); } catch { /**/ }
+};
+const saveNotes = () => {
+  try { localStorage.setItem(storageKey('notes'), JSON.stringify(notes.value)); } catch { /**/ }
+};
+
+// --- Column sync ---
 const syncColumns = labelList => {
   const updated = {};
   labelList.forEach(label => {
@@ -30,24 +70,37 @@ const syncColumns = labelList => {
     };
   });
   columns.value = updated;
+
+  const titles = labelList.map(l => l.title);
+  const kept = columnOrder.value.filter(t => titles.includes(t));
+  const added = titles.filter(t => !kept.includes(t));
+  columnOrder.value = [...kept, ...added];
+  saveOrder();
 };
 
-watch(
-  labels,
-  newLabels => {
-    if (newLabels.length > 0) {
-      syncColumns(newLabels);
-      fetchAll();
-    }
-  },
-  { immediate: true }
-);
+const toggleHidden = title => {
+  if (hiddenColumns.value.has(title)) {
+    hiddenColumns.value.delete(title);
+  } else {
+    hiddenColumns.value.add(title);
+  }
+  hiddenColumns.value = new Set(hiddenColumns.value); // trigger reactivity
+  saveHidden();
+};
+
+watch(labels, newLabels => {
+  if (newLabels.length > 0) {
+    syncColumns(newLabels);
+    fetchAll();
+  }
+}, { immediate: true });
 
 onMounted(() => {
+  loadPersisted();
   store.dispatch('labels/get');
 });
 
-// Fetch conversations for a single label column
+// --- Fetch ---
 const fetchColumn = async labelTitle => {
   const col = columns.value[labelTitle];
   if (!col) return;
@@ -55,14 +108,7 @@ const fetchColumn = async labelTitle => {
   try {
     const response = await axios.get(
       `/api/v1/accounts/${accountId.value}/conversations`,
-      {
-        params: {
-          labels: labelTitle,
-          status: 'open',
-          assignee_type: 'all',
-          page: 1,
-        },
-      }
+      { params: { labels: labelTitle, status: 'open', assignee_type: 'all', page: 1 } }
     );
     col.conversations = response.data?.data?.payload || [];
   } catch {
@@ -78,72 +124,120 @@ const fetchAll = async () => {
   isRefreshing.value = false;
 };
 
-// Drag-and-drop handlers
+// --- Card drag-and-drop ---
 const onDragStart = (event, conv, fromLabel) => {
   dragState.value = { convId: conv.id, fromLabel, conv };
   event.dataTransfer.effectAllowed = 'move';
 };
 
-const onDragOver = (event, labelTitle) => {
-  event.preventDefault();
-  event.dataTransfer.dropEffect = 'move';
-  dropTarget.value = labelTitle;
-};
-
-const onDragLeave = event => {
-  // Only clear if leaving the column entirely (not entering a child)
-  if (!event.currentTarget.contains(event.relatedTarget)) {
-    dropTarget.value = '';
-  }
-};
-
 const onDrop = async (event, targetLabel) => {
-  event.preventDefault();
   dropTarget.value = '';
-
   const { convId, fromLabel, conv } = dragState.value;
   dragState.value = { convId: null, fromLabel: null, conv: null };
-
   if (!convId || fromLabel === targetLabel) return;
 
-  // Compute new label list: remove source label, add target label
   const currentLabels = Array.isArray(conv.labels) ? [...conv.labels] : [];
   const newLabels = currentLabels.filter(l => l !== fromLabel);
   if (!newLabels.includes(targetLabel)) newLabels.push(targetLabel);
 
-  // Optimistic UI update
   const fromCol = columns.value[fromLabel];
   const toCol = columns.value[targetLabel];
-  if (fromCol) {
-    fromCol.conversations = fromCol.conversations.filter(c => c.id !== convId);
-  }
-  const updatedConv = { ...conv, labels: newLabels };
-  if (toCol) toCol.conversations.unshift(updatedConv);
+  if (fromCol) fromCol.conversations = fromCol.conversations.filter(c => c.id !== convId);
+  if (toCol) toCol.conversations.unshift({ ...conv, labels: newLabels });
 
-  // Persist via API
   try {
     await axios.post(
       `/api/v1/accounts/${accountId.value}/conversations/${convId}/labels`,
       { labels: newLabels }
     );
   } catch {
-    // Revert optimistic update on failure
     if (fromCol) fromCol.conversations.unshift(conv);
-    if (toCol) {
-      toCol.conversations = toCol.conversations.filter(c => c.id !== convId);
-    }
+    if (toCol) toCol.conversations = toCol.conversations.filter(c => c.id !== convId);
   }
 };
 
-// Navigate to the conversation detail
-const openConversation = convId => {
-  router.push(`/app/accounts/${accountId.value}/conversations/${convId}`);
+// --- Column drag-and-drop ---
+const onColDragStart = (event, title) => {
+  event.stopPropagation();
+  colDragState.value = { from: title };
+  event.dataTransfer.effectAllowed = 'move';
 };
 
-// Human-readable relative time (Portuguese)
+const onColDragEnd = () => {
+  colDragState.value = { from: null };
+  colDropTarget.value = '';
+};
+
+const onColDrop = (event, toTitle) => {
+  colDropTarget.value = '';
+  const from = colDragState.value.from;
+  colDragState.value = { from: null };
+  if (!from || from === toTitle) return;
+
+  const order = [...columnOrder.value];
+  const fi = order.indexOf(from);
+  const ti = order.indexOf(toTitle);
+  if (fi === -1 || ti === -1) return;
+  order.splice(fi, 1);
+  order.splice(ti, 0, from);
+  columnOrder.value = order;
+  saveOrder();
+};
+
+// Unified drag zone handlers on each column container
+const onZoneDragOver = (event, title) => {
+  event.preventDefault();
+  if (colDragState.value.from) {
+    if (colDragState.value.from !== title) colDropTarget.value = title;
+  } else {
+    dropTarget.value = title;
+  }
+};
+
+const onZoneDragLeave = event => {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    dropTarget.value = '';
+    colDropTarget.value = '';
+  }
+};
+
+const onZoneDrop = (event, title) => {
+  event.preventDefault();
+  if (colDragState.value.from) {
+    onColDrop(event, title);
+  } else {
+    onDrop(event, title);
+  }
+};
+
+// --- Card popup ---
+const openCard = conv => {
+  selectedCard.value = conv;
+  cardNote.value = notes.value[conv.id] || '';
+};
+
+const closeCard = () => {
+  if (selectedCard.value) {
+    notes.value[selectedCard.value.id] = cardNote.value;
+    saveNotes();
+  }
+  selectedCard.value = null;
+  cardNote.value = '';
+};
+
+const goToConversation = () => {
+  if (!selectedCard.value) return;
+  notes.value[selectedCard.value.id] = cardNote.value;
+  saveNotes();
+  const id = selectedCard.value.id;
+  selectedCard.value = null;
+  router.push(`/app/accounts/${accountId.value}/conversations/${id}`);
+};
+
+// --- Helpers ---
 const relativeTime = ts => {
   if (!ts) return '';
-  const diff = Math.floor((Date.now() / 1000 - ts) / 60); // minutes ago
+  const diff = Math.floor((Date.now() / 1000 - ts) / 60);
   if (diff < 1) return 'agora';
   if (diff < 60) return `${diff}min`;
   const h = Math.floor(diff / 60);
@@ -151,46 +245,85 @@ const relativeTime = ts => {
   return `${Math.floor(h / 24)}d`;
 };
 
-const labelColumns = computed(() => Object.values(columns.value));
+const labelColumns = computed(() => {
+  const ordered = columnOrder.value
+    .filter(t => columns.value[t])
+    .map(t => columns.value[t]);
+  const inOrder = new Set(columnOrder.value);
+  Object.values(columns.value).forEach(col => {
+    if (!inOrder.has(col.title)) ordered.push(col);
+  });
+  return ordered;
+});
+
+const visibleColumns = computed(() =>
+  labelColumns.value.filter(col => !hiddenColumns.value.has(col.title))
+);
 </script>
 
 <template>
-  <section class="flex flex-col w-full h-full bg-n-surface-1 overflow-hidden">
+  <section
+    class="flex flex-col w-full h-full bg-n-surface-1 overflow-hidden"
+    @click="showColumnManager = false"
+  >
     <!-- Header -->
-    <div
-      class="flex items-center justify-between px-6 py-4 border-b border-n-weak flex-shrink-0"
-    >
+    <div class="flex items-center justify-between px-6 py-4 border-b border-n-weak flex-shrink-0">
       <div class="flex items-center gap-3">
         <span class="i-lucide-kanban size-5 text-n-slate-11" />
-        <h1 class="text-base font-semibold text-n-slate-12">
-          Kanban de Etiquetas
-        </h1>
+        <h1 class="text-base font-semibold text-n-slate-12">Kanban de Etiquetas</h1>
       </div>
-      <button
-        class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 text-n-slate-11 disabled:opacity-50 transition-colors"
-        :disabled="isRefreshing"
-        @click="fetchAll"
-      >
-        <span
-          class="i-lucide-refresh-cw size-3.5"
-          :class="isRefreshing ? 'animate-spin' : ''"
-        />
-        Atualizar
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- Column manager -->
+        <div class="relative" @click.stop>
+          <button
+            class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 text-n-slate-11 transition-colors"
+            @click="showColumnManager = !showColumnManager"
+          >
+            <span class="i-lucide-columns-3 size-3.5" />
+            Colunas
+          </button>
+          <div
+            v-if="showColumnManager"
+            class="absolute right-0 top-full mt-1 z-20 min-w-[200px] bg-n-solid-1 border border-n-weak rounded-xl shadow-lg py-2"
+          >
+            <div class="px-3 py-1 text-xs text-n-slate-9 font-medium uppercase tracking-wide mb-1">
+              Exibir / Ocultar
+            </div>
+            <label
+              v-for="col in labelColumns"
+              :key="col.title"
+              class="flex items-center gap-2.5 px-3 py-2 hover:bg-n-solid-2 cursor-pointer select-none"
+            >
+              <input
+                type="checkbox"
+                :checked="!hiddenColumns.has(col.title)"
+                @change="toggleHidden(col.title)"
+              />
+              <span class="size-2.5 rounded-sm flex-shrink-0" :style="{ backgroundColor: col.color }" />
+              <span class="text-sm text-n-slate-12 truncate">{{ col.title }}</span>
+            </label>
+          </div>
+        </div>
+        <!-- Refresh -->
+        <button
+          class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 text-n-slate-11 disabled:opacity-50 transition-colors"
+          :disabled="isRefreshing"
+          @click="fetchAll"
+        >
+          <span class="i-lucide-refresh-cw size-3.5" :class="isRefreshing ? 'animate-spin' : ''" />
+          Atualizar
+        </button>
+      </div>
     </div>
 
-    <!-- Empty state: no labels configured -->
+    <!-- Empty state -->
     <div
       v-if="labelColumns.length === 0"
       class="flex flex-col items-center justify-center flex-1 gap-3 text-n-slate-10"
     >
       <span class="i-lucide-tag size-10 opacity-30" />
-      <p class="text-sm">
-        Nenhuma etiqueta cadastrada.
-      </p>
-      <p class="text-xs text-n-slate-9">
-        Crie etiquetas em Configurações → Etiquetas.
-      </p>
+      <p class="text-sm">Nenhuma etiqueta cadastrada.</p>
+      <p class="text-xs text-n-slate-9">Crie etiquetas em Configurações → Etiquetas.</p>
     </div>
 
     <!-- Kanban board -->
@@ -199,54 +332,54 @@ const labelColumns = computed(() => Object.values(columns.value));
       class="flex flex-row gap-3 p-4 overflow-x-auto flex-1 min-h-0 items-start"
     >
       <div
-        v-for="col in labelColumns"
+        v-for="col in visibleColumns"
         :key="col.title"
         class="flex flex-col rounded-xl border min-w-[272px] max-w-[272px] h-full transition-all bg-n-solid-2"
-        :class="
+        :class="[
           dropTarget === col.title
             ? 'border-[var(--color-woot-500)] ring-2 ring-[var(--color-woot-500)] ring-opacity-30'
-            : 'border-n-weak'
-        "
-        @dragover="onDragOver($event, col.title)"
-        @dragleave="onDragLeave"
-        @drop="onDrop($event, col.title)"
+            : colDropTarget === col.title
+              ? 'border-blue-400 ring-2 ring-blue-400 ring-opacity-30'
+              : 'border-n-weak',
+          colDragState.from === col.title ? 'opacity-40' : '',
+        ]"
+        @dragover="onZoneDragOver($event, col.title)"
+        @dragleave="onZoneDragLeave"
+        @drop="onZoneDrop($event, col.title)"
       >
-        <!-- Column header -->
-        <div
-          class="flex items-center justify-between px-3 py-3 border-b border-n-weak flex-shrink-0"
-        >
-          <div class="flex items-center gap-2 min-w-0">
-            <span
-              class="size-2.5 rounded-sm flex-shrink-0"
-              :style="{ backgroundColor: col.color }"
-            />
-            <span
-              class="text-sm font-medium text-n-slate-12 truncate"
-              :title="col.title"
-            >
+        <!-- Column header with drag handle -->
+        <div class="flex items-center justify-between px-3 py-3 border-b border-n-weak flex-shrink-0">
+          <div
+            class="flex items-center gap-2 min-w-0 flex-1 cursor-grab active:cursor-grabbing"
+            draggable="true"
+            @dragstart="onColDragStart($event, col.title)"
+            @dragend="onColDragEnd"
+          >
+            <span class="i-lucide-grip-vertical size-3.5 text-n-slate-8 flex-shrink-0" />
+            <span class="size-2.5 rounded-sm flex-shrink-0" :style="{ backgroundColor: col.color }" />
+            <span class="text-sm font-medium text-n-slate-12 truncate" :title="col.title">
               {{ col.title }}
             </span>
           </div>
-          <span
-            class="ml-2 flex-shrink-0 min-w-[20px] text-center px-1.5 py-0.5 rounded-full bg-n-solid-3 text-xs text-n-slate-10 font-medium"
-          >
-            {{ col.loading ? '…' : col.conversations.length }}
-          </span>
+          <div class="flex items-center gap-1 flex-shrink-0 ml-2">
+            <span class="min-w-[20px] text-center px-1.5 py-0.5 rounded-full bg-n-solid-3 text-xs text-n-slate-10 font-medium">
+              {{ col.loading ? '…' : col.conversations.length }}
+            </span>
+            <button
+              class="p-1 rounded text-n-slate-8 hover:text-n-slate-11 hover:bg-n-solid-3 transition-colors"
+              title="Ocultar coluna"
+              @click.stop="toggleHidden(col.title)"
+            >
+              <span class="i-lucide-eye-off size-3.5" />
+            </button>
+          </div>
         </div>
 
         <!-- Cards area -->
         <div class="flex flex-col gap-2 p-2 overflow-y-auto flex-1 min-h-0">
-          <!-- Loading -->
-          <div
-            v-if="col.loading"
-            class="flex items-center justify-center py-10"
-          >
-            <span
-              class="i-lucide-loader-circle size-5 text-n-slate-9 animate-spin"
-            />
+          <div v-if="col.loading" class="flex items-center justify-center py-10">
+            <span class="i-lucide-loader-circle size-5 text-n-slate-9 animate-spin" />
           </div>
-
-          <!-- Empty -->
           <div
             v-else-if="col.conversations.length === 0"
             class="flex flex-col items-center justify-center py-10 gap-2 text-n-slate-9"
@@ -254,69 +387,131 @@ const labelColumns = computed(() => Object.values(columns.value));
             <span class="i-lucide-inbox size-6 opacity-30" />
             <p class="text-xs">Sem conversas</p>
           </div>
-
-          <!-- Conversation cards -->
           <template v-else>
             <div
               v-for="conv in col.conversations"
               :key="conv.id"
-              class="rounded-lg bg-n-solid-1 border border-n-weak p-3 cursor-grab active:cursor-grabbing hover:border-n-strong hover:shadow-sm transition-all select-none"
               draggable="true"
+              class="rounded-lg bg-n-solid-1 border border-n-weak p-3 cursor-grab active:cursor-grabbing hover:border-n-strong hover:shadow-sm transition-all select-none"
               @dragstart="onDragStart($event, conv, col.title)"
-              @click.stop="openConversation(conv.id)"
+              @click.stop="openCard(conv)"
             >
-              <!-- Contact name + time -->
+              <!-- Contact + time -->
               <div class="flex items-start justify-between gap-2 mb-1.5">
-                <span
-                  class="text-sm font-medium text-n-slate-12 leading-tight truncate"
-                >
+                <span class="text-sm font-medium text-n-slate-12 leading-tight truncate">
                   {{ conv.meta?.sender?.name || 'Contato' }}
                 </span>
                 <span class="text-xs text-n-slate-9 flex-shrink-0 mt-0.5">
                   {{ relativeTime(conv.timestamp || conv.created_at) }}
                 </span>
               </div>
+              <p class="text-xs text-n-slate-9 mb-1.5">#{{ conv.id }}</p>
 
-              <!-- Conversation ID -->
-              <p class="text-xs text-n-slate-9 mb-2">
-                #{{ conv.id }}
-              </p>
+              <!-- Note preview -->
+              <div v-if="notes[conv.id]" class="flex items-start gap-1 mb-2">
+                <span class="i-lucide-sticky-note size-3 text-n-slate-8 mt-0.5 flex-shrink-0" />
+                <span class="text-[10px] text-n-slate-8 leading-tight line-clamp-2">{{ notes[conv.id] }}</span>
+              </div>
 
-              <!-- Labels chips -->
-              <div
-                v-if="conv.labels && conv.labels.length > 0"
-                class="flex flex-wrap gap-1 mb-2"
-              >
+              <!-- Label chips -->
+              <div v-if="conv.labels && conv.labels.length > 0" class="flex flex-wrap gap-1 mb-2">
                 <span
                   v-for="lbl in conv.labels"
                   :key="lbl"
                   class="px-1.5 py-0.5 rounded text-[10px] font-medium"
                   :style="{
-                    backgroundColor:
-                      labels.find(l => l.title === lbl)?.color + '22' ||
-                      '#6b728022',
-                    color:
-                      labels.find(l => l.title === lbl)?.color || '#6b7280',
+                    backgroundColor: (labels.find(l => l.title === lbl)?.color ?? '#6b7280') + '22',
+                    color: labels.find(l => l.title === lbl)?.color ?? '#6b7280',
                   }"
-                >
-                  {{ lbl }}
-                </span>
+                >{{ lbl }}</span>
               </div>
 
               <!-- Assignee -->
-              <div
-                v-if="conv.meta?.assignee"
-                class="flex items-center gap-1.5 mt-1"
-              >
+              <div v-if="conv.meta?.assignee" class="flex items-center gap-1.5 mt-1">
                 <span class="i-lucide-circle-user size-3 text-n-slate-9" />
-                <span class="text-xs text-n-slate-9 truncate">
-                  {{ conv.meta.assignee.name }}
-                </span>
+                <span class="text-xs text-n-slate-9 truncate">{{ conv.meta.assignee.name }}</span>
               </div>
             </div>
           </template>
         </div>
       </div>
     </div>
+
+    <!-- Card detail modal -->
+    <Teleport to="body">
+      <div
+        v-if="selectedCard"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        @click.self="closeCard"
+      >
+        <div class="bg-n-solid-1 rounded-2xl border border-n-weak shadow-2xl w-full max-w-md mx-4 flex flex-col overflow-hidden">
+          <!-- Modal header -->
+          <div class="flex items-center justify-between px-5 py-4 border-b border-n-weak">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-sm font-semibold text-n-slate-12 truncate">
+                {{ selectedCard.meta?.sender?.name || 'Contato' }}
+              </span>
+              <span class="text-xs text-n-slate-9 flex-shrink-0">#{{ selectedCard.id }}</span>
+            </div>
+            <button
+              class="p-1 rounded-lg text-n-slate-9 hover:text-n-slate-12 hover:bg-n-solid-3 transition-colors"
+              @click="closeCard"
+            >
+              <span class="i-lucide-x size-4" />
+            </button>
+          </div>
+
+          <!-- Labels + assignee -->
+          <div class="px-5 pt-4 flex flex-wrap items-center gap-2">
+            <template v-if="selectedCard.labels?.length">
+              <span
+                v-for="lbl in selectedCard.labels"
+                :key="lbl"
+                class="px-2 py-0.5 rounded text-[11px] font-medium"
+                :style="{
+                  backgroundColor: (labels.find(l => l.title === lbl)?.color ?? '#6b7280') + '22',
+                  color: labels.find(l => l.title === lbl)?.color ?? '#6b7280',
+                }"
+              >{{ lbl }}</span>
+            </template>
+            <div v-if="selectedCard.meta?.assignee" class="flex items-center gap-1.5 text-n-slate-9">
+              <span class="i-lucide-circle-user size-3.5" />
+              <span class="text-xs">{{ selectedCard.meta.assignee.name }}</span>
+            </div>
+          </div>
+
+          <!-- Notes textarea -->
+          <div class="px-5 pt-4 pb-2">
+            <label class="block text-xs font-medium text-n-slate-10 mb-2">
+              <span class="i-lucide-sticky-note size-3.5 inline-block mr-1 align-middle" />
+              Observações do atendimento
+            </label>
+            <textarea
+              v-model="cardNote"
+              rows="5"
+              placeholder="Escreva suas observações sobre o andamento deste atendimento..."
+              class="w-full rounded-lg border border-n-weak bg-n-solid-2 text-sm text-n-slate-12 placeholder-n-slate-9 px-3 py-2.5 resize-none focus:outline-none focus:border-[var(--color-woot-500)] focus:ring-1 focus:ring-[var(--color-woot-500)] transition-colors"
+            />
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-n-weak">
+            <button
+              class="px-4 py-2 rounded-lg text-sm text-n-slate-11 border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 transition-colors"
+              @click="closeCard"
+            >
+              Fechar
+            </button>
+            <button
+              class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-[var(--color-woot-500)] hover:bg-[var(--color-woot-600)] transition-colors flex items-center gap-1.5"
+              @click="goToConversation"
+            >
+              <span class="i-lucide-message-circle size-3.5" />
+              Ir para conversa
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
