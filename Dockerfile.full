@@ -5,6 +5,7 @@ FROM node:24-alpine AS assets-builder
 
 # Force cache invalidation on every build
 ARG CACHEBUST=1
+RUN echo "Cache bust: $CACHEBUST"
 
 WORKDIR /build
 
@@ -20,7 +21,8 @@ RUN apk add --no-cache \
 
 # Clonar repositório Chatwoot — fixado na versão 4.11.1-fazer-ai.37
 # Para atualizar: troque a tag abaixo, verifique os diffs dos arquivos customizados e rebuilde
-RUN git clone --depth 1 --branch v4.11.1-fazer-ai.37 https://github.com/fazer-ai/chatwoot.git . || \
+RUN echo "Cloning with CACHEBUST=$CACHEBUST" && \
+    git clone --depth 1 --branch v4.11.1-fazer-ai.37 https://github.com/fazer-ai/chatwoot.git . || \
     git clone --depth 1 https://github.com/fazer-ai/chatwoot.git .
 
 # Copiar customizações do frontend
