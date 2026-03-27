@@ -3,6 +3,9 @@
 # ========================================
 FROM node:24-alpine AS assets-builder
 
+# Force cache invalidation on every build
+ARG CACHEBUST=1
+
 WORKDIR /build
 
 # Instalar dependências do sistema

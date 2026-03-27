@@ -30,4 +30,7 @@ jobs:
           file: Dockerfile.full
           push: true
           no-cache: true
+          pull: true
+          build-args: |
+            CACHEBUST=${{ github.run_id }}
           tags: ghcr.io/fabricio-back/chatwoot-moveisback:latest
