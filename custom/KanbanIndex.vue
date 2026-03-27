@@ -259,12 +259,59 @@ const labelColumns = computed(() => {
 const visibleColumns = computed(() =>
   labelColumns.value.filter(col => !hiddenColumns.value.has(col.title))
 );
+
+// --- Filters ---
+const showFilters = ref(false);
+const filterSearch = ref('');
+const filterAssignee = ref('');
+
+const availableAssignees = computed(() => {
+  const map = {};
+  Object.values(columns.value).forEach(col => {
+    col.conversations.forEach(conv => {
+      const a = conv.meta?.assignee;
+      if (a?.id) map[a.id] = a;
+    });
+  });
+  return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+});
+
+const hasActiveFilters = computed(
+  () => filterSearch.value.trim() !== '' || filterAssignee.value !== ''
+);
+
+const clearFilters = () => {
+  filterSearch.value = '';
+  filterAssignee.value = '';
+};
+
+const filteredConvs = col => {
+  let convs = col.conversations;
+  const q = filterSearch.value.trim().toLowerCase();
+  if (q) {
+    convs = convs.filter(c =>
+      (c.meta?.sender?.name ?? '').toLowerCase().includes(q) ||
+      String(c.id).includes(q)
+    );
+  }
+  if (filterAssignee.value) {
+    convs = convs.filter(c => String(c.meta?.assignee?.id) === String(filterAssignee.value));
+  }
+  return convs;
+};
+
+const activeFilterCount = computed(() => {
+  let n = 0;
+  if (filterSearch.value.trim()) n++;
+  if (filterAssignee.value) n++;
+  return n;
+});
 </script>
 
 <template>
   <section
     class="flex flex-col w-full h-full bg-n-surface-1 overflow-hidden"
-    @click="showColumnManager = false"
+    @click="showColumnManager = false; showFilters = false"
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-6 py-4 border-b border-n-weak flex-shrink-0">
@@ -304,6 +351,23 @@ const visibleColumns = computed(() =>
             </label>
           </div>
         </div>
+        <!-- Filters toggle -->
+        <button
+          class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors relative"
+          :class="
+            hasActiveFilters
+              ? 'border-[var(--color-woot-500)] bg-[var(--color-woot-500)]/10 text-[var(--color-woot-600)]'
+              : 'border-n-weak bg-n-solid-2 hover:bg-n-solid-3 text-n-slate-11'
+          "
+          @click.stop="showFilters = !showFilters"
+        >
+          <span class="i-lucide-sliders-horizontal size-3.5" />
+          Filtros
+          <span
+            v-if="activeFilterCount > 0"
+            class="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-[var(--color-woot-500)] text-white text-[10px] font-bold flex items-center justify-center"
+          >{{ activeFilterCount }}</span>
+        </button>
         <!-- Refresh -->
         <button
           class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 text-n-slate-11 disabled:opacity-50 transition-colors"
@@ -314,6 +378,58 @@ const visibleColumns = computed(() =>
           Atualizar
         </button>
       </div>
+    </div>
+
+    <!-- Filter panel -->
+    <div
+      v-if="showFilters"
+      class="flex items-center gap-3 px-6 py-3 border-b border-n-weak bg-n-solid-1 flex-shrink-0 flex-wrap"
+      @click.stop
+    >
+      <!-- Search -->
+      <div class="relative min-w-[220px] flex-1">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 i-lucide-search size-3.5 text-n-slate-9 pointer-events-none" />
+        <input
+          v-model="filterSearch"
+          class="w-full text-sm pl-8 pr-3 py-1.5 rounded-lg border border-n-weak bg-n-solid-2 text-n-slate-12 placeholder-n-slate-9 focus:outline-none focus:ring-1 focus:ring-[var(--color-woot-500)] focus:border-[var(--color-woot-500)]"
+          placeholder="Buscar por contato ou #ID..."
+        />
+        <button
+          v-if="filterSearch"
+          class="absolute right-2 top-1/2 -translate-y-1/2 text-n-slate-8 hover:text-n-slate-11"
+          @click="filterSearch = ''"
+        >
+          <span class="i-lucide-x size-3.5" />
+        </button>
+      </div>
+
+      <!-- Assignee filter -->
+      <div class="relative min-w-[180px]">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 i-lucide-circle-user size-3.5 text-n-slate-9 pointer-events-none" />
+        <select
+          v-model="filterAssignee"
+          class="w-full text-sm pl-8 pr-3 py-1.5 rounded-lg border border-n-weak bg-n-solid-2 text-n-slate-12 focus:outline-none focus:ring-1 focus:ring-[var(--color-woot-500)] focus:border-[var(--color-woot-500)] appearance-none cursor-pointer"
+        >
+          <option value="">Todos os responsáveis</option>
+          <option v-for="a in availableAssignees" :key="a.id" :value="a.id">{{ a.name }}</option>
+        </select>
+        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 i-lucide-chevron-down size-3.5 text-n-slate-9 pointer-events-none" />
+      </div>
+
+      <!-- Clear filters -->
+      <button
+        v-if="hasActiveFilters"
+        class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 hover:bg-red-100 dark:hover:bg-red-900 transition-colors flex-shrink-0"
+        @click="clearFilters"
+      >
+        <span class="i-lucide-x size-3.5" />
+        Limpar filtros
+      </button>
+
+      <!-- Results summary -->
+      <span v-if="hasActiveFilters" class="text-xs text-n-slate-9 ml-auto flex-shrink-0">
+        {{ visibleColumns.reduce((t, col) => t + filteredConvs(col).length, 0) }} conversa(s) encontrada(s)
+      </span>
     </div>
 
     <!-- Empty state -->
@@ -362,8 +478,15 @@ const visibleColumns = computed(() =>
             </span>
           </div>
           <div class="flex items-center gap-1 flex-shrink-0 ml-2">
-            <span class="min-w-[20px] text-center px-1.5 py-0.5 rounded-full bg-n-solid-3 text-xs text-n-slate-10 font-medium">
-              {{ col.loading ? '…' : col.conversations.length }}
+            <span
+              class="min-w-[20px] text-center px-1.5 py-0.5 rounded-full text-xs font-medium transition-colors"
+              :class="
+                hasActiveFilters && !col.loading
+                  ? 'bg-[var(--color-woot-500)]/15 text-[var(--color-woot-600)]'
+                  : 'bg-n-solid-3 text-n-slate-10'
+              "
+            >
+              {{ col.loading ? '…' : (hasActiveFilters ? filteredConvs(col).length + '/' + col.conversations.length : col.conversations.length) }}
             </span>
             <button
               class="p-1 rounded text-n-slate-8 hover:text-n-slate-11 hover:bg-n-solid-3 transition-colors"
@@ -381,15 +504,20 @@ const visibleColumns = computed(() =>
             <span class="i-lucide-loader-circle size-5 text-n-slate-9 animate-spin" />
           </div>
           <div
-            v-else-if="col.conversations.length === 0"
+            v-else-if="filteredConvs(col).length === 0"
             class="flex flex-col items-center justify-center py-10 gap-2 text-n-slate-9"
           >
             <span class="i-lucide-inbox size-6 opacity-30" />
-            <p class="text-xs">Sem conversas</p>
+            <p class="text-xs">{{ hasActiveFilters ? 'Nenhum resultado' : 'Sem conversas' }}</p>
+            <button
+              v-if="hasActiveFilters"
+              class="text-xs text-[var(--color-woot-500)] underline hover:no-underline"
+              @click.stop="clearFilters"
+            >Limpar filtros</button>
           </div>
           <template v-else>
             <div
-              v-for="conv in col.conversations"
+              v-for="conv in filteredConvs(col)"
               :key="conv.id"
               draggable="true"
               class="rounded-lg bg-n-solid-1 border border-n-weak p-3 cursor-grab active:cursor-grabbing hover:border-n-strong hover:shadow-sm transition-all select-none"
