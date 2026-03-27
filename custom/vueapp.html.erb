@@ -109,8 +109,9 @@
     <div id="app"></div>
     <noscript id="noscript">This app works best with JavaScript enabled.</noscript>
     <%= yield %>
-    <% if @dashboard_scripts.present? %>
-      <%= @dashboard_scripts.html_safe %>
-    <% end %>
+    <%# Desabilitado: @dashboard_scripts do fazer-ai injetava menus indesejados %>
+    <%# if @dashboard_scripts.present? %>
+      <%#= @dashboard_scripts.html_safe %>
+    <%# end %>
   </body>
 </html>
