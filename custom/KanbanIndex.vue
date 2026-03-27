@@ -503,7 +503,7 @@ const visibleColumns = computed(() =>
               Fechar
             </button>
             <button
-              class="px-4 py-2 rounded-lg text-sm font-medium text-white bg-[var(--color-woot-500)] hover:bg-[var(--color-woot-600)] transition-colors flex items-center gap-1.5"
+              class="px-4 py-2 rounded-lg text-sm font-medium text-n-white bg-[var(--color-woot-500)] hover:bg-[var(--color-woot-600)] transition-colors flex items-center gap-1.5 shadow-sm"
               @click="goToConversation"
             >
               <span class="i-lucide-message-circle size-3.5" />
