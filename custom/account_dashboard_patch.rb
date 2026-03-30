@@ -33,9 +33,10 @@ Rails.application.config.after_initialize do
       end
 
       def theme_primary_color=(value)
-        # Aceita apenas hex #rrggbb por segurança
-        clean = value.to_s.strip
-        clean = '' unless clean.match?(/\A#[0-9a-fA-F]{6}\z/)
+        # Aceita #rrggbb ou rrggbb (adiciona # automaticamente)
+        raw = value.to_s.strip
+        raw = "##{raw}" if raw.match?(/\A[0-9a-fA-F]{6}\z/)
+        clean = raw.match?(/\A#[0-9a-fA-F]{6}\z/) ? raw : ''
         self.custom_attributes = (custom_attributes || {}).merge(
           'theme_primary_color' => clean
         )
