@@ -63,14 +63,19 @@ export const applyPageFilters = (conversation, filters) => {
   return shouldFilter;
 };
 
-// v1.11 — agentes só veem conversas onde são assignee ou participantes
+// v1.12 — agentes só veem conversas onde são assignee ou participantes
+// (a menos que o Super Admin ativou agentCanSeeAll para esta conta)
 export const applyRoleFilter = (
   conversation,
   role,
   permissions,
-  currentUserId
+  currentUserId,
+  agentCanSeeAll = false
 ) => {
   if (role === 'administrator') return true;
+
+  // Super Admin ativou "Agentes veem todas as conversas" para esta conta
+  if (agentCanSeeAll) return true;
 
   if (permissions.includes('conversation_manage')) {
     return true;
