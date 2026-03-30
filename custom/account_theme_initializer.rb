@@ -72,6 +72,7 @@ end
 # ------------------------------------------------------------------
 # Controller (definido inline — sem arquivo separado)
 # ------------------------------------------------------------------
+begin
 class AccountThemeController < ActionController::Base
   # Tempo de cache do CSS no browser (1 hora). O script no frontend
   # invalida por query string ao trocar de conta.
@@ -165,4 +166,9 @@ end
 # ------------------------------------------------------------------
 Rails.application.routes.prepend do
   get 'account_theme/:account_id', to: 'account_theme#show', defaults: { format: :css }
+end
+
+rescue StandardError => e
+  Rails.logger.error "[account_theme_initializer] Falha ao carregar (app continua): #{e.class}: #{e.message}"
+  Rails.logger.error e.backtrace.first(10).join("\n") rescue nil
 end
