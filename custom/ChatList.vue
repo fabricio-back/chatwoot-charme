@@ -130,6 +130,7 @@ const inboxesList = useMapGetter('inboxes/getInboxes');
 const campaigns = useMapGetter('campaigns/getAllCampaigns');
 const labels = useMapGetter('labels/getLabels');
 const currentAccountId = useMapGetter('getCurrentAccountId');
+const currentAccount = useMapGetter('getCurrentAccount');
 // We can't useFunctionGetter here since it needs to be called on setup?
 const getTeamFn = useMapGetter('teams/getTeam');
 const getConversationById = useMapGetter('getConversationById');
@@ -209,6 +210,11 @@ const isAdmin = computed(() => {
   return currentUser.value?.role === 'administrator';
 });
 
+// Verifica se o Super Admin ativou visibilidade total para agentes nesta conta
+const agentCanSeeAll = computed(() => {
+  return currentAccount.value?.custom_attributes?.agent_see_all_conversations === true;
+});
+
 const assigneeTabItems = computed(() => {
   const allTabs = filterItemsByPermission(
     ASSIGNEE_TYPE_TAB_PERMISSIONS,
@@ -219,12 +225,13 @@ const assigneeTabItems = computed(() => {
     name: t(`CHAT_LIST.ASSIGNEE_TYPE_TABS.${key}`),
     count: conversationStats.value[countKey] || 0,
   }));
-  
-  // Oculta abas "All" e "Unassigned" para não-administradores
-  if (isAdmin.value) {
+
+  // Admins e contas com visibilidade total veem todas as abas
+  if (isAdmin.value || agentCanSeeAll.value) {
     return allTabs;
   }
-  
+
+  // Oculta abas "All" e "Unassigned" para agentes sem permissão
   return allTabs.filter(
     tab => tab.key !== 'all' && tab.key !== 'unassigned'
   );

@@ -10,10 +10,17 @@ class Conversations::PermissionFilterService
   def perform
     return conversations if user_role == 'administrator'
 
+    # Quando o Super Admin ativou "Agentes veem todas as conversas" para esta conta
+    return conversations if account_allows_agent_see_all?
+
     accessible_conversations
   end
 
   private
+
+  def account_allows_agent_see_all?
+    (account.custom_attributes || {}).fetch('agent_see_all_conversations', false) == true
+  end
 
   def accessible_conversations
     # Agentes veem conversas onde são assignee OU participante

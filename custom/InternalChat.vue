@@ -27,6 +27,9 @@ const sending = ref(false);
 const errorMsg = ref('');
 const messagesEl = ref(null);
 const searchQuery = ref('');
+// ID do agente assignee da conversa (quem criou = ó dono)
+// Dono envia como 'outgoing' (→ direita), quem responde envia como 'incoming' (→ esquerda)
+const conversationAssigneeId = ref(null);
 let pollTimer = null;
 
 const INBOX_NAME = 'Chat Interno';
@@ -152,7 +155,14 @@ const ensureConversation = async contactId => {
   const res = await apiGet(`/api/v1/accounts/${accountId.value}/contacts/${contactId}/conversations`);
   const convs = extractList(res.data?.payload) || extractList(res.data);
   const open = convs.find(c => c.inbox_id === inboxId.value && c.status !== 'resolved');
-  if (open) return open.id;
+  if (open) {
+    // Captura o assignee da conversa existente para determinar direção de mensagens
+    conversationAssigneeId.value =
+      Number(open.meta?.assignee?.id) ||
+      Number(open.assignee_id) ||
+      null;
+    return open.id;
+  }
 
   const r = await apiPost(`/api/v1/accounts/${accountId.value}/conversations`, {
     inbox_id: inboxId.value,
@@ -161,6 +171,9 @@ const ensureConversation = async contactId => {
   });
   const convId = r.data?.id ?? r.data?.data?.id ?? r.data?.payload?.id;
   if (!convId) throw new Error('Não foi possível criar a conversa interna.');
+
+  // Quem cria a conversa é o assignee (dono)
+  conversationAssigneeId.value = Number(currentUser.value?.id);
 
   await apiPost(
     `/api/v1/accounts/${accountId.value}/conversations/${convId}/participants`,
@@ -198,6 +211,16 @@ const sendMessage = async () => {
   newMessage.value = '';
   sending.value = true;
 
+  // Dono da conversa (assignee) → 'outgoing' (direção: direita)
+  // Quem responde → 'incoming' (direção: esquerda na view nativa do Chatwoot)
+  // isMe() continua funcionando pois o Chatwoot armazena o User como sender
+  // independente do message_type quando enviado via API de agente.
+  const amIAssignee =
+    conversationAssigneeId.value &&
+    Number(conversationAssigneeId.value) === Number(currentUser.value?.id);
+  const msgType = amIAssignee ? 'outgoing' : 'incoming';
+  const msgTypeNum = amIAssignee ? 1 : 0;
+
   const tempId = `temp-${Date.now()}`;
   messages.value = [
     ...messages.value,
@@ -206,7 +229,7 @@ const sendMessage = async () => {
       content: text,
       created_at: Math.floor(Date.now() / 1000),
       sender: { id: currentUser.value?.id, name: currentUser.value?.name },
-      message_type: 1,
+      message_type: msgTypeNum,
     },
   ];
   scrollBottom();
@@ -214,7 +237,7 @@ const sendMessage = async () => {
   try {
     await apiPost(
       `/api/v1/accounts/${accountId.value}/conversations/${conversationId.value}/messages`,
-      { content: text, message_type: 'outgoing', author_id: currentUser.value?.id }
+      { content: text, message_type: msgType }
     );
     await loadMessages();
   } catch {
@@ -254,6 +277,7 @@ const backToList = () => {
   selectedAgent.value = null;
   messages.value = [];
   conversationId.value = null;
+  conversationAssigneeId.value = null;
   errorMsg.value = '';
 };
 

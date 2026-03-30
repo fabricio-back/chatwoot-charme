@@ -33,6 +33,8 @@ const colDropTarget = ref('');
 const selectedCard = ref(null);
 const cardNote = ref('');
 const notes = ref({});
+const savingNote = ref(false);
+const loadedContactNote = ref(''); // rastreia nota carregada da API (evita duplicatas)
 
 // --- Persistence ---
 const storageKey = suffix => `kanban-${suffix}-${accountId.value}`;
@@ -56,6 +58,35 @@ const saveHidden = () => {
 };
 const saveNotes = () => {
   try { localStorage.setItem(storageKey('notes'), JSON.stringify(notes.value)); } catch { /**/ }
+};
+
+// --- Contact Notes API ---
+// Salva nota no contato via API; ignora se o conteúdo não mudou (evita duplicatas)
+const saveContactNote = async (contactId, content) => {
+  if (!contactId || !content?.trim()) return;
+  if (content.trim() === loadedContactNote.value.trim()) return;
+  try {
+    await axios.post(
+      `/api/v1/accounts/${accountId.value}/contacts/${contactId}/notes`,
+      { content }
+    );
+    loadedContactNote.value = content.trim();
+  } catch { /* ignora silenciosamente */ }
+};
+
+// Carrega a nota mais recente do contato da API
+const loadContactNote = async contactId => {
+  if (!contactId) return null;
+  try {
+    const res = await axios.get(
+      `/api/v1/accounts/${accountId.value}/contacts/${contactId}/notes`
+    );
+    const list = Array.isArray(res.data?.payload) ? res.data.payload
+      : Array.isArray(res.data) ? res.data : [];
+    if (!list.length) return null;
+    const sorted = [...list].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+    return sorted[0]?.content || null;
+  } catch { return null; }
 };
 
 // --- Column sync ---
@@ -211,25 +242,54 @@ const onZoneDrop = (event, title) => {
 };
 
 // --- Card popup ---
-const openCard = conv => {
+const openCard = async conv => {
   selectedCard.value = conv;
-  cardNote.value = notes.value[conv.id] || '';
+  const localNote = notes.value[conv.id] || '';
+  cardNote.value = localNote;
+  loadedContactNote.value = localNote;
+
+  // Se não há nota local, tenta carregar a nota mais recente do contato via API
+  if (!localNote) {
+    const contactId = conv.meta?.sender?.id;
+    if (contactId) {
+      const remoteNote = await loadContactNote(contactId);
+      if (remoteNote) {
+        cardNote.value = remoteNote;
+        loadedContactNote.value = remoteNote;
+        notes.value[conv.id] = remoteNote;
+        saveNotes();
+      }
+    }
+  }
 };
 
-const closeCard = () => {
+const closeCard = async () => {
   if (selectedCard.value) {
     notes.value[selectedCard.value.id] = cardNote.value;
     saveNotes();
+    const contactId = selectedCard.value.meta?.sender?.id;
+    if (contactId && cardNote.value.trim()) {
+      savingNote.value = true;
+      await saveContactNote(contactId, cardNote.value.trim());
+      savingNote.value = false;
+    }
   }
   selectedCard.value = null;
   cardNote.value = '';
+  loadedContactNote.value = '';
 };
 
-const goToConversation = () => {
+const goToConversation = async () => {
   if (!selectedCard.value) return;
   notes.value[selectedCard.value.id] = cardNote.value;
   saveNotes();
+  const contactId = selectedCard.value.meta?.sender?.id;
   const id = selectedCard.value.id;
+  if (contactId && cardNote.value.trim()) {
+    savingNote.value = true;
+    await saveContactNote(contactId, cardNote.value.trim());
+    savingNote.value = false;
+  }
   selectedCard.value = null;
   router.push(`/app/accounts/${accountId.value}/conversations/${id}`);
 };
@@ -625,16 +685,20 @@ const activeFilterCount = computed(() => {
           <!-- Actions -->
           <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-n-weak">
             <button
-              class="px-4 py-2 rounded-lg text-sm text-n-slate-11 border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 transition-colors"
+              class="px-4 py-2 rounded-lg text-sm text-n-slate-11 border border-n-weak bg-n-solid-2 hover:bg-n-solid-3 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              :disabled="savingNote"
               @click="closeCard"
             >
+              <span v-if="savingNote" class="i-lucide-loader-circle size-3.5 animate-spin" />
               Fechar
             </button>
             <button
-              class="px-4 py-2 rounded-lg text-sm font-medium text-n-white bg-[var(--color-woot-500)] hover:bg-[var(--color-woot-600)] transition-colors flex items-center gap-1.5 shadow-sm"
+              class="px-4 py-2 rounded-lg text-sm font-medium text-n-white bg-[var(--color-woot-500)] hover:bg-[var(--color-woot-600)] transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-60"
+              :disabled="savingNote"
               @click="goToConversation"
             >
-              <span class="i-lucide-message-circle size-3.5" />
+              <span v-if="savingNote" class="i-lucide-loader-circle size-3.5 animate-spin" />
+              <span v-else class="i-lucide-message-circle size-3.5" />
               Ir para conversa
             </button>
           </div>

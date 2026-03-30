@@ -117,6 +117,10 @@ COPY ./custom/search_service.rb /app/app/services/search_service.rb
 COPY ./custom/internal_chat_inbox.rb /app/config/initializers/internal_chat_inbox.rb
 # Remove Dashboard Script do antigo kanban-backend (astraonline) do banco de dados
 COPY ./custom/remove_kanban_script.rb /app/config/initializers/remove_kanban_script.rb
+# Super Admin: toggle "Agentes veem todas as conversas" + campo "Cor primária do tema"
+COPY ./custom/account_dashboard_patch.rb /app/config/initializers/account_dashboard_patch.rb
+# Tema dinâmico de cores por conta — rota GET /account_theme/:account_id
+COPY ./custom/account_theme_initializer.rb /app/config/initializers/account_theme_initializer.rb
 
 # Copiar layout customizado com tema de cores
 COPY ./custom/vueapp.html.erb /app/app/views/layouts/vueapp.html.erb

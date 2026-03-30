@@ -11,7 +11,27 @@ LABEL description="Chatwoot customizado - Abas All/Unassigned ocultas para agent
 
 # Copiar componente ChatList.vue modificado
 # Oculta abas "All" e "Unassigned" para usuários não-administradores
+# (respeita o toggle agent_see_all_conversations definido no Super Admin)
 COPY ./custom/ChatList.vue /app/app/javascript/dashboard/components/ChatList.vue
+
+# HTML principal da SPA — injeta script de tema dinâmico por conta
+COPY ./custom/vueapp.html.erb /app/app/views/layouts/vueapp.html.erb
+
+# ==========================================
+# CUSTOMIZAÇÕES DO BACKEND
+# ==========================================
+
+# Inicializador: adiciona campo "Agentes veem todas as conversas" no Super Admin
+# e aplica patches no AccountDashboard (Administrate) sem migrações
+COPY ./custom/account_dashboard_patch.rb /app/config/initializers/account_dashboard_patch.rb
+
+# Serviço de filtro de permissões de conversas
+# Respeita o toggle agent_see_all_conversations configurado no Super Admin
+COPY ./custom/permission_filter_service.rb /app/app/services/conversations/permission_filter_service.rb
+
+# Inicializador: tema dinâmico de cores por conta
+# Define AccountThemeController + rota GET /account_theme/:account_id
+COPY ./custom/account_theme_initializer.rb /app/config/initializers/account_theme_initializer.rb
 
 # ==========================================
 # CUSTOMIZAÇÕES ADICIONAIS (OPCIONAL)

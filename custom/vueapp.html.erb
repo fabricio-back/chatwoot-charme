@@ -75,6 +75,58 @@
     <%= vite_javascript_tag @application_pack %>
     <link rel="stylesheet" href="/brand-assets/custom-theme.css">
     <script>
+      // Tema dinâmico por conta — carrega /account_theme/:id como CSS
+      // sobrepondo o custom-theme.css padrão com as cores escolhidas no Super Admin.
+      (function () {
+        var LINK_ID = 'dynamic-account-theme';
+
+        function applyTheme(accountId) {
+          var existing = document.getElementById(LINK_ID);
+          if (existing && existing.dataset.account === String(accountId)) return;
+          if (existing) existing.remove();
+          var link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.id = LINK_ID;
+          link.dataset.account = accountId;
+          link.href = '/account_theme/' + accountId + '?v=' + Date.now();
+          document.head.appendChild(link);
+        }
+
+        function detectAccountId() {
+          var m = window.location.pathname.match(/\/accounts\/(\d+)/);
+          return m ? m[1] : null;
+        }
+
+        // Aplicar imediatamente se já estiver na URL certa
+        var initial = detectAccountId();
+        if (initial) applyTheme(initial);
+
+        // Monitorar navegações SPA (pushState / popState)
+        var lastId = initial;
+        function onNavigate() {
+          var id = detectAccountId();
+          if (id && id !== lastId) { lastId = id; applyTheme(id); }
+        }
+        window.addEventListener('popstate', onNavigate);
+        (function patchHistory(type) {
+          var orig = history[type];
+          history[type] = function () {
+            var ret = orig.apply(this, arguments);
+            onNavigate();
+            return ret;
+          };
+        })('pushState');
+        (function patchHistory(type) {
+          var orig = history[type];
+          history[type] = function () {
+            var ret = orig.apply(this, arguments);
+            onNavigate();
+            return ret;
+          };
+        })('replaceState');
+      })();
+    </script>
+    <script>
       // Evita duplicação dos itens de menu injetados pelo KanbanCW.
       // O script do KanbanCW usa um flag em memória (menuItemsAdded) que não
       // resiste a re-renders parciais do Vue. Este observer limpa duplicatas
