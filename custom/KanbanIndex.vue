@@ -68,7 +68,7 @@ const saveContactNote = async (contactId, content) => {
   try {
     await axios.post(
       `/api/v1/accounts/${accountId.value}/contacts/${contactId}/notes`,
-      { content }
+      { note: { content } }
     );
     loadedContactNote.value = content.trim();
   } catch { /* ignora silenciosamente */ }
