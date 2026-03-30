@@ -1,68 +1,129 @@
-# v1.13 — SearchService: aplica filtro de permissões nas queries de conversas e mensagens.
-# Agentes só encontram conversas/mensagens onde são assignee ou participantes.
+# v1.14 — SearchService: mantém interface original do Chatwoot (pattr_initialize + params hash)
+# + aplica filtro de permissões para agentes (assignee ou participante).
+# Corrige busca de conversas por nome do contato via JOIN.
 class SearchService
-  attr_reader :current_user, :current_account, :q, :page
+  pattr_initialize [:current_user!, :current_account!, :params!, :search_type!]
 
-  def initialize(current_user, current_account, q, page)
-    @current_user = current_user
-    @current_account = current_account
-    @q = q
-    @page = page || 1
+  def account_user
+    @account_user ||= current_account.account_users.find_by(user: current_user)
   end
 
   def perform
-    {
-      contacts: search_contacts,
-      conversations: search_conversations,
-      messages: search_messages,
-    }
+    case search_type
+    when 'Message'
+      { messages: filter_messages }
+    when 'Conversation'
+      { conversations: filter_conversations }
+    when 'Contact'
+      { contacts: filter_contacts }
+    when 'Article'
+      { articles: filter_articles }
+    else
+      {
+        contacts: filter_contacts,
+        messages: filter_messages,
+        conversations: filter_conversations,
+        articles: filter_articles
+      }
+    end
   end
 
   private
 
   def administrator?
-    AccountUser.find_by(account_id: current_account.id, user_id: current_user.id)&.administrator?
+    account_user&.administrator?
   end
 
-  def accessible_conversations
-    base = current_account.conversations
-    
-    # Se for admin, retorna todas
-    return base if administrator?
-    
-    # Se não for admin: filtra conversas onde o usuário é assignee ou participante
-    base.where('assignee_id = :user_id OR id IN (
-      SELECT conversation_id FROM conversation_participants WHERE user_id = :user_id
-    )', user_id: current_user.id)
+  def search_query
+    @search_query ||= params[:q].to_s.strip
   end
 
-  def accessible_conversation_ids
-    @accessible_conversation_ids ||= accessible_conversations.pluck(:id)
+  def accessable_inbox_ids
+    @accessable_inbox_ids ||= current_user.assigned_inboxes.pluck(:id)
   end
 
-  def search_contacts
-    # Busca em name, email, phone_number e também em identifier (ID customizado do contato)
-    current_account.contacts
-                   .where('name ILIKE :q OR email ILIKE :q OR phone_number ILIKE :q OR identifier ILIKE :q', q: "%#{q}%")
-                   .limit(10)
+  def participant_conversation_ids
+    @participant_conversation_ids ||= ConversationParticipant
+      .where(user_id: current_user.id)
+      .pluck(:conversation_id)
   end
 
-  def search_conversations
-    accessible_conversations
-      .where('conversations.id::text ILIKE :q OR display_id::text ILIKE :q', q: "%#{q}%")
-      .order(created_at: :desc)
-      .limit(10)
-  end
-
-  def search_messages
-    messages = current_account.messages
-                               .where('content ILIKE ?', "%#{q}%")
+  def filter_conversations
+    query = current_account.conversations
+                           .where(inbox_id: accessable_inbox_ids)
+                           .joins('INNER JOIN contacts ON conversations.contact_id = contacts.id')
+                           .where(
+                             'cast(conversations.display_id as text) ILIKE :search
+                              OR contacts.name ILIKE :search
+                              OR contacts.email ILIKE :search
+                              OR contacts.phone_number ILIKE :search
+                              OR contacts.identifier ILIKE :search',
+                             search: "%#{search_query}%"
+                           )
 
     unless administrator?
-      messages = messages.where(conversation_id: accessible_conversation_ids)
+      if participant_conversation_ids.present?
+        query = query.where(
+          'conversations.assignee_id = :uid OR conversations.id IN (:pids)',
+          uid: current_user.id,
+          pids: participant_conversation_ids
+        )
+      else
+        query = query.where(assignee_id: current_user.id)
+      end
     end
 
-    messages.order(created_at: :desc).limit(10)
+    @conversations = query.order('conversations.created_at DESC')
+                          .page(params[:page])
+                          .per(15)
+  end
+
+  def filter_messages
+    query = current_account.messages
+                           .where('messages.created_at >= ?', 3.months.ago)
+                           .where('messages.content ILIKE :search', search: "%#{search_query}%")
+
+    unless administrator?
+      query = query.where(inbox_id: accessable_inbox_ids)
+
+      if participant_conversation_ids.present?
+        query = query.where(
+          'messages.conversation_id IN (
+            SELECT id FROM conversations
+            WHERE (assignee_id = :uid OR id IN (:pids))
+            AND inbox_id IN (:iids)
+          )',
+          uid: current_user.id,
+          pids: participant_conversation_ids,
+          iids: accessable_inbox_ids
+        )
+      else
+        query = query.joins(:conversation)
+                     .where(conversations: { assignee_id: current_user.id })
+      end
+    end
+
+    @messages = query.reorder('messages.created_at DESC')
+                     .page(params[:page])
+                     .per(15)
+  end
+
+  def filter_contacts
+    @contacts = current_account.contacts
+                               .where(
+                                 'name ILIKE :q OR email ILIKE :q OR phone_number ILIKE :q OR identifier ILIKE :q',
+                                 q: "%#{search_query}%"
+                               )
+                               .order(last_activity_at: :desc)
+                               .page(params[:page])
+                               .per(15)
+  end
+
+  def filter_articles
+    @articles = current_account.articles
+                               .text_search(search_query)
+                               .page(params[:page])
+                               .per(15)
   end
 end
 
