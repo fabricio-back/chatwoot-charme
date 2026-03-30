@@ -130,7 +130,9 @@ const inboxesList = useMapGetter('inboxes/getInboxes');
 const campaigns = useMapGetter('campaigns/getAllCampaigns');
 const labels = useMapGetter('labels/getLabels');
 const currentAccountId = useMapGetter('getCurrentAccountId');
-const currentAccount = useMapGetter('getCurrentAccount');
+const currentAccount = computed(() =>
+  store.getters['accounts/getAccount'](currentAccountId.value)
+);
 // We can't useFunctionGetter here since it needs to be called on setup?
 const getTeamFn = useMapGetter('teams/getTeam');
 const getConversationById = useMapGetter('getConversationById');

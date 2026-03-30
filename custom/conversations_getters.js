@@ -27,7 +27,7 @@ const getters = {
     const currentUser = rootGetters.getCurrentUser;
     const currentUserId = rootGetters.getCurrentUser.id;
     const currentAccountId = rootGetters.getCurrentAccountId;
-    const currentAccount = rootGetters.getCurrentAccount;
+    const currentAccount = rootGetters['accounts/getAccount'](currentAccountId);
     const agentCanSeeAll =
       currentAccount?.custom_attributes?.agent_see_all_conversations === true;
 
@@ -111,7 +111,7 @@ const getters = {
     const currentUser = rootGetters.getCurrentUser;
     const currentUserId = rootGetters.getCurrentUser.id;
     const currentAccountId = rootGetters.getCurrentAccountId;
-    const currentAccount = rootGetters.getCurrentAccount;
+    const currentAccount = rootGetters['accounts/getAccount'](currentAccountId);
     const agentCanSeeAll =
       currentAccount?.custom_attributes?.agent_see_all_conversations === true;
 
