@@ -180,7 +180,11 @@
             }
           });
         }
-        var observer = new MutationObserver(removeDuplicateMenuItems);
+        var debounceTimer = null;
+        var observer = new MutationObserver(function () {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(removeDuplicateMenuItems, 200);
+        });
         document.addEventListener('DOMContentLoaded', function () {
           observer.observe(document.body, { childList: true, subtree: true });
         });

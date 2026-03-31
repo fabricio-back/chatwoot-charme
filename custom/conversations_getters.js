@@ -28,8 +28,7 @@ const getters = {
     const currentUserId = rootGetters.getCurrentUser.id;
     const currentAccountId = rootGetters.getCurrentAccountId;
     const currentAccount = rootGetters['accounts/getAccount'](currentAccountId);
-    const agentCanSeeAll =
-      currentAccount?.custom_attributes?.agent_see_all_conversations === true;
+    const agentCanSeeAll = currentAccount?.agent_see_all_conversations === true;
 
     const permissions = getUserPermissions(currentUser, currentAccountId);
     const userRole = getUserRole(currentUser, currentAccountId);
@@ -112,8 +111,7 @@ const getters = {
     const currentUserId = rootGetters.getCurrentUser.id;
     const currentAccountId = rootGetters.getCurrentAccountId;
     const currentAccount = rootGetters['accounts/getAccount'](currentAccountId);
-    const agentCanSeeAll =
-      currentAccount?.custom_attributes?.agent_see_all_conversations === true;
+    const agentCanSeeAll = currentAccount?.agent_see_all_conversations === true;
 
     const permissions = getUserPermissions(currentUser, currentAccountId);
     const userRole = getUserRole(currentUser, currentAccountId);

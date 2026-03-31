@@ -39,18 +39,15 @@ class SearchService
   end
 
   def accessable_inbox_ids
-    @accessable_inbox_ids ||= current_user.assigned_inboxes.pluck(:id)
+    @accessable_inbox_ids ||= current_user.assigned_inboxes.select(:id)
   end
 
-  def participant_conversation_ids
-    @participant_conversation_ids ||= ConversationParticipant
-      .where(user_id: current_user.id)
-      .pluck(:conversation_id)
+  def agent_see_all?
+    (current_account.custom_attributes || {})['agent_see_all_conversations'] == true
   end
 
   def filter_conversations
     query = current_account.conversations
-                           .where(inbox_id: accessable_inbox_ids)
                            .joins('INNER JOIN contacts ON conversations.contact_id = contacts.id')
                            .where(
                              'cast(conversations.display_id as text) ILIKE :search
@@ -61,16 +58,12 @@ class SearchService
                              search: "%#{search_query}%"
                            )
 
-    unless administrator?
-      if participant_conversation_ids.present?
-        query = query.where(
-          'conversations.assignee_id = :uid OR conversations.id IN (:pids)',
-          uid: current_user.id,
-          pids: participant_conversation_ids
-        )
-      else
-        query = query.where(assignee_id: current_user.id)
-      end
+    unless administrator? || agent_see_all?
+      query = query.where(inbox_id: accessable_inbox_ids)
+      query = query.where(
+        'conversations.assignee_id = :uid OR conversations.id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = :uid)',
+        uid: current_user.id
+      )
     end
 
     @conversations = query.order('conversations.created_at DESC')
@@ -83,24 +76,15 @@ class SearchService
                            .where('messages.created_at >= ?', 3.months.ago)
                            .where('messages.content ILIKE :search', search: "%#{search_query}%")
 
-    unless administrator?
+    unless administrator? || agent_see_all?
       query = query.where(inbox_id: accessable_inbox_ids)
-
-      if participant_conversation_ids.present?
-        query = query.where(
-          'messages.conversation_id IN (
-            SELECT id FROM conversations
-            WHERE (assignee_id = :uid OR id IN (:pids))
-            AND inbox_id IN (:iids)
-          )',
-          uid: current_user.id,
-          pids: participant_conversation_ids,
-          iids: accessable_inbox_ids
-        )
-      else
-        query = query.joins(:conversation)
-                     .where(conversations: { assignee_id: current_user.id })
-      end
+      query = query.where(
+        'messages.conversation_id IN (
+          SELECT id FROM conversations
+          WHERE assignee_id = :uid OR id IN (SELECT conversation_id FROM conversation_participants WHERE user_id = :uid)
+        )',
+        uid: current_user.id
+      )
     end
 
     @messages = query.reorder('messages.created_at DESC')

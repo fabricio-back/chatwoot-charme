@@ -239,7 +239,8 @@ const sendMessage = async () => {
       `/api/v1/accounts/${accountId.value}/conversations/${conversationId.value}/messages`,
       { content: text, message_type: msgType }
     );
-    await loadMessages();
+    // loadMessages errors são não-fatais — o poll de 3s vai recuperar
+    await loadMessages().catch(() => {});
   } catch {
     newMessage.value = text;
     messages.value = messages.value.filter(m => m.id !== tempId);

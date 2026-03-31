@@ -3,13 +3,13 @@
 # for atribuída a eles, evitando acesso a conversas não atribuídas pelo sino 🔔.
 class NotificationListener < BaseListener
   def conversation_created(event)
-    conversation = extract_conversation_and_account(event, 'conversation')[0]
-    account = conversation.account
+    conversation, account = extract_conversation_and_account(event, 'conversation')
+    agent_see_all = (account.custom_attributes || {})['agent_see_all_conversations'] == true
 
-    account.users
-           .joins(:account_users)
-           .where(account_users: { account_id: account.id, role: :administrator })
-           .each do |user|
+    # Notifica administradores sempre; notifica agentes se a conta permite visibilidade total
+    recipients = agent_see_all ? account.users : account.users.joins(:account_users).where(account_users: { role: :administrator })
+
+    recipients.each do |user|
       NotificationBuilder.new(
         notification_type: 'conversation_creation',
         user: user,

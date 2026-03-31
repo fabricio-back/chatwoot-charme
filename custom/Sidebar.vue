@@ -57,6 +57,13 @@ const { width: windowWidth } = useWindowSize();
 const isMobile = computed(() => windowWidth.value < 768);
 
 const accountId = useMapGetter('getCurrentAccountId');
+
+// Respeita flag agent_see_all_conversations (mesma lógica do ChatList.vue)
+const agentCanSeeAll = computed(() => {
+  const account = store.getters['accounts/getAccount'](accountId.value);
+  return account?.agent_see_all_conversations === true;
+});
+const showAllConvItems = computed(() => isAdmin.value || agentCanSeeAll.value);
 const isFeatureEnabledonAccount = useMapGetter(
   'accounts/isFeatureEnabledonAccount'
 );
@@ -201,7 +208,7 @@ const onComposeClose = () => {
   emitter.emit(BUS_EVENTS.NEW_CONVERSATION_MODAL, false);
 };
 
-const newReportRoutes = () => [
+const reportRoutes = [
   {
     name: 'Reports Agent',
     label: t('SIDEBAR.REPORTS_AGENT'),
@@ -227,8 +234,6 @@ const newReportRoutes = () => [
   },
 ];
 
-const reportRoutes = computed(() => newReportRoutes());
-
 const menuItems = computed(() => {
   const items = [
     {
@@ -253,7 +258,7 @@ const menuItems = computed(() => {
       label: t('SIDEBAR.CONVERSATIONS'),
       icon: 'i-lucide-message-circle',
       children: [
-        ...(isAdmin.value ? [{
+        ...(showAllConvItems.value ? [{
           name: 'All',
           label: t('SIDEBAR.ALL_CONVERSATIONS'),
           activeOn: ['inbox_conversation'],
@@ -265,7 +270,7 @@ const menuItems = computed(() => {
           activeOn: ['conversation_through_mentions'],
           to: accountScopedRoute('conversation_mentions'),
         },
-        ...(isAdmin.value ? [{
+        ...(showAllConvItems.value ? [{
           name: 'Unattended',
           activeOn: ['conversation_through_unattended'],
           label: t('SIDEBAR.UNATTENDED_CONVERSATIONS'),
@@ -496,7 +501,7 @@ const menuItems = computed(() => {
           label: t('SIDEBAR.REPORTS_CONVERSATION'),
           to: accountScopedRoute('conversation_reports'),
         },
-        ...reportRoutes.value,
+        ...reportRoutes,
         {
           name: 'Reports CSAT',
           label: t('SIDEBAR.CSAT'),
@@ -718,15 +723,9 @@ const menuItems = computed(() => {
   ];
   const isHiddenApp = app => {
     const title = (app.title ?? app.name ?? '').toLowerCase();
-    console.log('[SIDEBAR DEBUG] DashboardApp found:', { id: app.id, title: app.title, name: app.name, content: app.content?.substring(0, 50) });
-    const hidden = HIDDEN_APP_NAMES.some(n => title.includes(n));
-    if (hidden) {
-      console.log('[SIDEBAR DEBUG] ❌ BLOCKED:', title);
-    }
-    return hidden;
+    return HIDDEN_APP_NAMES.some(n => title.includes(n));
   };
   const visibleApps = dashboardApps.value.filter(app => !isHiddenApp(app));
-  console.log('[SIDEBAR DEBUG] Total apps:', dashboardApps.value.length, 'Visible:', visibleApps.length, 'Blocked:', dashboardApps.value.length - visibleApps.length);
 
   if (visibleApps.length > 0) {
     const settingsIndex = items.findIndex(item => item.name === 'Settings');

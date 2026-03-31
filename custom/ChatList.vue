@@ -214,7 +214,7 @@ const isAdmin = computed(() => {
 
 // Verifica se o Super Admin ativou visibilidade total para agentes nesta conta
 const agentCanSeeAll = computed(() => {
-  return currentAccount.value?.custom_attributes?.agent_see_all_conversations === true;
+  return currentAccount.value?.agent_see_all_conversations === true;
 });
 
 const assigneeTabItems = computed(() => {

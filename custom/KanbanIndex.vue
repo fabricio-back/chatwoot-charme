@@ -127,7 +127,11 @@ onMounted(() => {
 watch(labels, newLabels => {
   if (newLabels.length > 0) {
     syncColumns(newLabels);
-    fetchAll();
+    // Só faz fetch inicial uma vez. Atualizações subsequentes de labels
+    // (ex: mudança de cor) não recarregam todas as conversas.
+    if (!isRefreshing.value && Object.values(columns.value).every(c => c.conversations.length === 0)) {
+      fetchAll();
+    }
   }
 });
 
@@ -137,11 +141,21 @@ const fetchColumn = async labelTitle => {
   if (!col) return;
   col.loading = true;
   try {
-    const response = await axios.get(
-      `/api/v1/accounts/${accountId.value}/conversations`,
-      { params: { labels: labelTitle, status: 'open', assignee_type: 'all', page: 1 } }
-    );
-    col.conversations = response.data?.data?.payload || [];
+    let all = [];
+    let page = 1;
+    const MAX_PAGES = 40; // ~1000 conversas por coluna; evita loop infinito em bug de API
+    while (page <= MAX_PAGES) {
+      const response = await axios.get(
+        `/api/v1/accounts/${accountId.value}/conversations`,
+        { params: { labels: labelTitle, status: 'open', assignee_type: 'all', page } }
+      );
+      const payload = response.data?.data?.payload || [];
+      all = all.concat(payload);
+      // API retorna menos que 25 = última página
+      if (payload.length < 25) break;
+      page++;
+    }
+    col.conversations = all;
   } catch {
     col.conversations = [];
   } finally {

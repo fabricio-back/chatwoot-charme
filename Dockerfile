@@ -33,6 +33,14 @@ COPY ./custom/permission_filter_service.rb /app/app/services/conversations/permi
 # Define AccountThemeController + rota GET /account_theme/:account_id
 COPY ./custom/account_theme_initializer.rb /app/config/initializers/account_theme_initializer.rb
 
+# Inicializador: desbloqueia features premium no Super Admin
+# Seta INSTALLATION_PRICING_PLAN=enterprise para habilitar:
+# Custom Branding, Agent Capacity, Audit Logs, Disable Branding
+COPY ./custom/enterprise_unlock.rb /app/config/initializers/enterprise_unlock.rb
+
+# Expõe agent_see_all_conversations na API para o frontend respeitar o filtro
+COPY ./custom/_account.json.jbuilder /app/app/views/api/v1/models/_account.json.jbuilder
+
 # ==========================================
 # CUSTOMIZAÇÕES ADICIONAIS (OPCIONAL)
 # ==========================================

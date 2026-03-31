@@ -23,23 +23,18 @@ class Conversations::PermissionFilterService
   end
 
   def accessible_conversations
-    # Agentes veem conversas onde são assignee OU participante
-    participant_conversation_ids = ConversationParticipant
+    # Agentes veem conversas onde são assignee OU participante (subquery em vez de pluck)
+    participant_subquery = ConversationParticipant
       .where(user_id: user.id)
-      .pluck(:conversation_id)
+      .select(:conversation_id)
 
     scope = conversations.where(inbox: user.inboxes.where(account_id: account.id))
 
-    if participant_conversation_ids.present?
-      scope.where(assignee_id: user.id)
-           .or(scope.where(id: participant_conversation_ids))
-    else
-      scope.where(assignee_id: user.id)
-    end
+    scope.where(assignee_id: user.id).or(scope.where(id: participant_subquery))
   end
 
   def account_user
-    AccountUser.find_by(account_id: account.id, user_id: user.id)
+    @account_user ||= AccountUser.find_by(account_id: account.id, user_id: user.id)
   end
 
   def user_role
