@@ -14,9 +14,12 @@ Rails.application.config.after_initialize do
     retries = 0
     begin
       ActiveRecord::Base.connection_pool.with_connection do
-        InstallationConfig.find_or_initialize_by(name: 'INSTALLATION_PRICING_PLAN').tap do |c|
-          c.value = 'enterprise'
-          c.save! if c.new_record? || c.value_changed?
+        config = InstallationConfig.find_or_initialize_by(name: 'INSTALLATION_PRICING_PLAN')
+        # value_changed? retorna false para atributos virtuais (não é coluna DB),
+        # então verificamos o valor atual antes de salvar.
+        unless config.value.to_s == 'enterprise'
+          config.value = 'enterprise'
+          config.save!
         end
       end
     rescue ActiveRecord::NoDatabaseError, PG::ConnectionBad
