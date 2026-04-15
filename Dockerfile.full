@@ -19,11 +19,11 @@ RUN apk add --no-cache \
     vips-dev \
     vips-tools
 
-# Clonar repositório Chatwoot — fixado na versão 4.11.1-fazer-ai.37
+# Clonar repositório Chatwoot — fixado na versão 4.12.0-fazer-ai.54
 # Para atualizar: troque a tag abaixo, verifique os diffs dos arquivos customizados e rebuilde
 RUN echo "=== BUILD TIMESTAMP: $CACHEBUST ===" && \
-    echo "Cloning Chatwoot v4.11.1-fazer-ai.37" && \
-    git clone --depth 1 --branch v4.11.1-fazer-ai.37 https://github.com/fazer-ai/chatwoot.git . || \
+    echo "Cloning Chatwoot v4.12.0-fazer-ai.54" && \
+    git clone --depth 1 --branch v4.12.0-fazer-ai.54 https://github.com/fazer-ai/chatwoot.git . || \
     git clone --depth 1 https://github.com/fazer-ai/chatwoot.git . && \
     echo "Clone completed at $(date)"
 
@@ -56,12 +56,12 @@ RUN find /build/app/javascript -type f \( -name "*.js" -o -name "*.ts" -o -name 
       -e 's|http://kanban\.moveisback\.com\.br[^"'\''`]*|http://localhost:65535|g' \
     && echo "Kanban URLs neutralizadas com CACHEBUST=$CACHEBUST" || true
 
-# Patch Message.vue: mensagens de agente diferentes do usuário atual aparecem no lado ESQUERDO
-# Isso permite que chats internos agente-a-agente mostrem lados corretos (como WhatsApp)
+# Patch Message.vue: alinhamento por sender ID APENAS em inboxes Channel::Api (Chat Interno/DMs)
+# Para outros canais (WhatsApp, email, etc.) mantém o comportamento original
 RUN sed -i \
-  's|return senderType\.toLowerCase() === SENDER_TYPES\.USER\.toLowerCase();|if (senderType.toLowerCase() === SENDER_TYPES.USER.toLowerCase()) { return Number(senderId) === Number(props.currentUserId); } return false;|g' \
+  's|return senderType\.toLowerCase() === SENDER_TYPES\.USER\.toLowerCase();|return inbox.value \&\& inbox.value.channel_type === '"'"'Channel::Api'"'"' ? Number(senderId) === Number(props.currentUserId) : senderType.toLowerCase() === SENDER_TYPES.USER.toLowerCase();|g' \
   /build/app/javascript/dashboard/components-next/message/Message.vue \
-  && echo "Message.vue patched: left/right alignment by sender id at CACHEBUST=$CACHEBUST" || echo "WARN: Message.vue patch failed"
+  && echo "Message.vue patched: left/right only for Channel::Api at CACHEBUST=$CACHEBUST" || echo "WARN: Message.vue patch failed"
 
 # Instalar pnpm via corepack (versão fixada para evitar incompatibilidade)
 RUN echo "CACHEBUST=$CACHEBUST - Setting up pnpm" && \
@@ -86,7 +86,7 @@ RUN echo "CACHEBUST=$CACHEBUST - Building frontend assets" && \
     ls -lh public/packs/ || echo "No packs directory"
 # Stage 2: Imagem Final com Assets
 # ========================================
-FROM ghcr.io/fazer-ai/chatwoot:latest
+FROM ghcr.io/fazer-ai/chatwoot:v4.12.0-fazer-ai.54
 
 # Metadata
 LABEL maintainer="seu-email@exemplo.com"

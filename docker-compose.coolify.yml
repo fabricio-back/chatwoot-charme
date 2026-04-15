@@ -85,6 +85,7 @@ services:
       - BAILEYS_WHATSAPP_GROUPS_ENABLED=true
       - 'MAILER_SENDER_EMAIL=${MAILER_SENDER_EMAIL}'
       - 'RESEND_API_KEY=${RESEND_API_KEY}'
+      - SIDEKIQ_CONCURRENCY=25
     command:
       - bundle
       - exec
