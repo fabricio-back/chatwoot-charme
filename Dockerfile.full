@@ -28,7 +28,8 @@ RUN echo "=== BUILD TIMESTAMP: $CACHEBUST ===" && \
     echo "Clone completed at $(date)"
 
 # Copiar customizações do frontend (força rebuild quando arquivos custom mudam)
-COPY ./custom/ChatList.vue /build/app/javascript/dashboard/components/ChatList.vue
+# ChatList.vue NÃO é sobrescrito: v4.12 mudou de vue-virtual-scroller para virtua/vue;
+# a versão upstream já tem groupType, permissões e virtual scroll corretos.
 COPY ./custom/Sidebar.vue /build/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
 # Chat Interno entre agentes
 COPY ./custom/InternalChat.vue /build/app/javascript/dashboard/components-next/sidebar/InternalChat.vue
