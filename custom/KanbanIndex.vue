@@ -380,6 +380,113 @@ const activeFilterCount = computed(() => {
   if (filterAssignee.value) n++;
   return n;
 });
+
+// --- Histórico de Etiquetas ---
+const historyConvId = ref(null);
+const historyData = ref({});
+
+// Interpreta mensagem de atividade e extrai { type: 'added'|'removed', label }
+// Suporta pt-BR e inglês (Chatwoot gera o texto conforme DEFAULT_LOCALE)
+const parseActivityLabel = content => {
+  if (!content) return null;
+  const txt = content.trim();
+  const addPatterns = [
+    /etiquetad[ao] com ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+    /labeled with ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+    /adicionou a etiqueta ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+    /label added[:\s]+['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+  ];
+  const remPatterns = [
+    /removeu a etiqueta ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+    /unlabeled from ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+    /etiqueta ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*removid/i,
+    /label removed[:\s]+['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
+  ];
+  for (const p of addPatterns) {
+    const m = txt.match(p);
+    if (m) return { type: 'added', label: m[1].trim() };
+  }
+  for (const p of remPatterns) {
+    const m = txt.match(p);
+    if (m) return { type: 'removed', label: m[1].trim() };
+  }
+  return null;
+};
+
+// Reconstrói timeline de etiquetas a partir das mensagens de atividade (message_type === 2)
+const buildLabelTimeline = msgs => {
+  const events = [];
+  for (const m of msgs) {
+    if (m.message_type !== 2) continue;
+    const parsed = parseActivityLabel(m.content);
+    if (parsed) events.push({ ...parsed, ts: m.created_at });
+  }
+  events.sort((a, b) => a.ts - b.ts);
+
+  const active = {}; // label -> startTs
+  const timeline = [];
+  for (const ev of events) {
+    if (ev.type === 'added' && !active[ev.label]) {
+      active[ev.label] = ev.ts;
+    } else if (ev.type === 'removed' && active[ev.label]) {
+      timeline.push({ label: ev.label, startTs: active[ev.label], endTs: ev.ts, active: false });
+      delete active[ev.label];
+    }
+  }
+  // Etiquetas ainda ativas (não removidas)
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (const [label, startTs] of Object.entries(active)) {
+    timeline.push({ label, startTs, endTs: null, active: true, nowSec });
+  }
+  return timeline.sort((a, b) => a.startTs - b.startTs);
+};
+
+const fmtDuration = secs => {
+  const m = Math.round(Math.abs(secs) / 60);
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  if (h < 24) return rm > 0 ? `${h}h ${rm}min` : `${h}h`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return rh > 0 ? `${d}d ${rh}h` : `${d}d`;
+};
+
+const fmtDateTime = ts => {
+  if (!ts) return '';
+  return new Date(ts * 1000).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+};
+
+const openHistory = async (conv, event) => {
+  event.stopPropagation();
+  historyConvId.value = conv.id;
+  // Invalida cache se a conversa foi movida desde a última busca (remove cache)
+  // Re-fetch sempre para garantir dados atualizados após drag-and-drop
+  historyData.value = {
+    ...historyData.value,
+    [conv.id]: { loading: true, timeline: [], convName: conv.meta?.sender?.name },
+  };
+  try {
+    const res = await axios.get(
+      `/api/v1/accounts/${accountId.value}/conversations/${conv.id}/messages`
+    );
+    const msgs = Array.isArray(res.data?.payload) ? res.data.payload : [];
+    historyData.value = {
+      ...historyData.value,
+      [conv.id]: { loading: false, timeline: buildLabelTimeline(msgs), convName: conv.meta?.sender?.name },
+    };
+  } catch {
+    historyData.value = {
+      ...historyData.value,
+      [conv.id]: { loading: false, timeline: [], convName: conv.meta?.sender?.name },
+    };
+  }
+};
+
+const closeHistory = () => { historyConvId.value = null; };
+const currentHistory = computed(() => historyData.value[historyConvId.value] || null);
 </script>
 
 <template>
@@ -603,9 +710,16 @@ const activeFilterCount = computed(() => {
                 <span class="text-sm font-medium text-n-slate-12 leading-tight truncate">
                   {{ conv.meta?.sender?.name || 'Contato' }}
                 </span>
-                <span class="text-xs text-n-slate-9 flex-shrink-0 mt-0.5">
-                  {{ relativeTime(conv.timestamp || conv.created_at) }}
-                </span>
+                <div class="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                  <button
+                    class="p-0.5 rounded text-n-slate-7 hover:text-[var(--color-woot-500)] transition-colors"
+                    title="Histórico de etiquetas"
+                    @click.stop="openHistory(conv, $event)"
+                  >
+                    <span class="i-lucide-history size-3" />
+                  </button>
+                  <span class="text-xs text-n-slate-9">{{ relativeTime(conv.timestamp || conv.created_at) }}</span>
+                </div>
               </div>
               <p class="text-xs text-n-slate-9 mb-1.5">#{{ conv.id }}</p>
 
@@ -715,6 +829,108 @@ const activeFilterCount = computed(() => {
               <span v-else class="i-lucide-message-circle size-3.5" />
               Ir para conversa
             </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- History Modal — linha do tempo de movimentações entre etiquetas -->
+    <Teleport to="body">
+      <div
+        v-if="historyConvId"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        @click.self="closeHistory"
+      >
+        <div class="bg-n-solid-1 rounded-2xl border border-n-weak shadow-2xl w-full max-w-md mx-4 flex flex-col overflow-hidden max-h-[80vh]">
+          <!-- Header -->
+          <div class="flex items-center justify-between px-5 py-4 border-b border-n-weak flex-shrink-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="i-lucide-history size-4 text-[var(--color-woot-500)]" />
+              <span class="text-sm font-semibold text-n-slate-12">Histórico de etiquetas</span>
+              <span v-if="currentHistory?.convName" class="text-xs text-n-slate-9 truncate">
+                — {{ currentHistory.convName }}
+              </span>
+            </div>
+            <button
+              class="p-1 rounded-lg text-n-slate-9 hover:text-n-slate-12 hover:bg-n-solid-3 transition-colors flex-shrink-0"
+              @click="closeHistory"
+            >
+              <span class="i-lucide-x size-4" />
+            </button>
+          </div>
+
+          <!-- Body -->
+          <div class="overflow-y-auto flex-1 px-5 py-4">
+            <!-- Loading -->
+            <div v-if="currentHistory?.loading" class="flex items-center justify-center py-10">
+              <span class="i-lucide-loader-circle size-5 text-n-slate-9 animate-spin" />
+            </div>
+
+            <!-- Sem histórico -->
+            <div
+              v-else-if="!currentHistory?.timeline?.length"
+              class="flex flex-col items-center justify-center py-8 gap-2 text-n-slate-9"
+            >
+              <span class="i-lucide-clock size-8 opacity-30" />
+              <p class="text-sm">Nenhuma movimentação registrada.</p>
+              <p class="text-xs text-n-slate-8 text-center">
+                O histórico é salvo automaticamente conforme o card é arrastado entre colunas.
+              </p>
+            </div>
+
+            <!-- Timeline -->
+            <div v-else class="space-y-0">
+              <div
+                v-for="(item, idx) in currentHistory.timeline"
+                :key="idx"
+                class="flex gap-3"
+              >
+                <!-- Dot + linha vertical -->
+                <div class="flex flex-col items-center flex-shrink-0">
+                  <div
+                    class="size-3 rounded-full mt-1 ring-2 ring-n-solid-1"
+                    :style="{ backgroundColor: labels.find(l => l.title === item.label)?.color ?? '#6b7280' }"
+                  />
+                  <div
+                    v-if="idx < currentHistory.timeline.length - 1"
+                    class="w-px flex-1 bg-n-weak mt-1"
+                    style="min-height: 32px"
+                  />
+                </div>
+
+                <!-- Conteúdo -->
+                <div class="pb-5 min-w-0 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <!-- Label chip -->
+                    <span
+                      class="px-2 py-0.5 rounded text-[11px] font-medium"
+                      :style="{
+                        backgroundColor: (labels.find(l => l.title === item.label)?.color ?? '#6b7280') + '22',
+                        color: labels.find(l => l.title === item.label)?.color ?? '#6b7280',
+                      }"
+                    >{{ item.label }}</span>
+                    <!-- Duração -->
+                    <span
+                      class="text-xs font-semibold"
+                      :class="item.active ? 'text-[var(--color-woot-500)]' : 'text-n-slate-11'"
+                    >
+                      {{ fmtDuration(item.endTs ? item.endTs - item.startTs : Math.floor(Date.now() / 1000) - item.startTs) }}
+                    </span>
+                    <!-- Badge ativo -->
+                    <span
+                      v-if="item.active"
+                      class="text-[10px] text-[var(--color-woot-500)] bg-[var(--color-woot-500)]/10 px-1.5 py-0.5 rounded-full font-medium"
+                    >ativo</span>
+                  </div>
+                  <!-- Datas de entrada / saída -->
+                  <p class="text-[10px] text-n-slate-8 mt-0.5">
+                    {{ fmtDateTime(item.startTs) }}
+                    <span v-if="item.endTs"> → {{ fmtDateTime(item.endTs) }}</span>
+                    <span v-else class="text-[var(--color-woot-500)]"> → agora</span>
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
