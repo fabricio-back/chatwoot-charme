@@ -287,7 +287,7 @@ const openCard = async conv => {
       .catch(() => []),
   ]);
 
-  cardHistory.value = { loading: false, timeline: buildLabelTimeline(msgs) };
+  cardHistory.value = { loading: false, timeline: buildLabelTimeline(msgs, labels.value) };
 };
 
 const closeCard = async () => {
@@ -400,40 +400,55 @@ const historyConvId = ref(null);
 const historyData = ref({});
 
 // Interpreta mensagem de atividade e extrai { type: 'added'|'removed', label }
-// Suporta pt-BR e inglês (Chatwoot gera o texto conforme DEFAULT_LOCALE)
-const parseActivityLabel = content => {
+// Formato pt-BR: "{user_name} adicionou {labels}" / "{user_name} removeu {labels}"
+// Formato EN:    "{user_name} added {labels}"     / "{user_name} removed {labels}"
+const parseActivityLabel = (content, knownTitles) => {
   if (!content) return null;
   const txt = content.trim();
-  const addPatterns = [
-    /etiquetad[ao] com ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-    /labeled with ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-    /adicionou a etiqueta ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-    /label added[:\s]+['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-  ];
-  const remPatterns = [
-    /removeu a etiqueta ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-    /unlabeled from ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-    /etiqueta ['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*removid/i,
-    /label removed[:\s]+['"\u201c\u201d«»]?(.+?)['"\u201c\u201d«»]?\s*$/i,
-  ];
-  for (const p of addPatterns) {
-    const m = txt.match(p);
-    if (m) return { type: 'added', label: m[1].trim() };
+
+  // Tenta extrair o texto após "adicionou" / "added"
+  const addMatch = txt.match(/\badicionou\s+(.+)$/i) || txt.match(/\badded\s+(.+)$/i);
+  if (addMatch) {
+    const labelStr = addMatch[1].trim();
+    // Divide por vírgula (múltiplas etiquetas em um único evento)
+    const candidates = labelStr.split(',').map(l => l.trim()).filter(Boolean);
+    const filtered = knownTitles
+      ? candidates.filter(c => knownTitles.has(c.toLowerCase()))
+      : candidates;
+    if (filtered.length) return filtered.map(label => ({ type: 'added', label }));
   }
-  for (const p of remPatterns) {
-    const m = txt.match(p);
-    if (m) return { type: 'removed', label: m[1].trim() };
+
+  // Tenta extrair o texto após "removeu" / "removed"
+  // Cuidado: "removeu a prioridade" / "removeu a política de SLA X" — filtrar por labels conhecidas
+  const remMatch = txt.match(/\bremoveu\s+(.+)$/i) || txt.match(/\bremoved\s+(.+)$/i);
+  if (remMatch) {
+    const labelStr = remMatch[1].trim();
+    const candidates = labelStr.split(',').map(l => l.trim()).filter(Boolean);
+    const filtered = knownTitles
+      ? candidates.filter(c => knownTitles.has(c.toLowerCase()))
+      : candidates;
+    if (filtered.length) return filtered.map(label => ({ type: 'removed', label }));
   }
+
   return null;
 };
 
 // Reconstrói timeline de etiquetas a partir das mensagens de atividade (message_type === 2)
-const buildLabelTimeline = msgs => {
+const buildLabelTimeline = (msgs, labelList = []) => {
+  // Set de títulos conhecidos para filtrar falsos positivos (ex: "a prioridade")
+  const knownTitles = labelList.length
+    ? new Set(labelList.map(l => l.title.toLowerCase()))
+    : null;
+
   const events = [];
   for (const m of msgs) {
     if (m.message_type !== 2) continue;
-    const parsed = parseActivityLabel(m.content);
-    if (parsed) events.push({ ...parsed, ts: m.created_at });
+    const parsed = parseActivityLabel(m.content, knownTitles);
+    if (parsed) {
+      for (const ev of parsed) {
+        events.push({ ...ev, ts: m.created_at });
+      }
+    }
   }
   events.sort((a, b) => a.ts - b.ts);
 
@@ -489,7 +504,7 @@ const openHistory = async (conv, event) => {
     const msgs = Array.isArray(res.data?.payload) ? res.data.payload : [];
     historyData.value = {
       ...historyData.value,
-      [conv.id]: { loading: false, timeline: buildLabelTimeline(msgs), convName: conv.meta?.sender?.name },
+      [conv.id]: { loading: false, timeline: buildLabelTimeline(msgs, labels.value), convName: conv.meta?.sender?.name },
     };
   } catch {
     historyData.value = {
