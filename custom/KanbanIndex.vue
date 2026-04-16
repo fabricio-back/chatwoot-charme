@@ -35,6 +35,7 @@ const cardNote = ref('');
 const notes = ref({});
 const savingNote = ref(false);
 const loadedContactNote = ref(''); // rastreia nota carregada da API (evita duplicatas)
+const cardHistory = ref({ loading: false, timeline: [] });
 
 // --- Persistence ---
 const storageKey = suffix => `kanban-${suffix}-${accountId.value}`;
@@ -261,20 +262,32 @@ const openCard = async conv => {
   const localNote = notes.value[conv.id] || '';
   cardNote.value = localNote;
   loadedContactNote.value = localNote;
+  cardHistory.value = { loading: true, timeline: [] };
 
-  // Se não há nota local, tenta carregar a nota mais recente do contato via API
-  if (!localNote) {
-    const contactId = conv.meta?.sender?.id;
-    if (contactId) {
-      const remoteNote = await loadContactNote(contactId);
-      if (remoteNote) {
-        cardNote.value = remoteNote;
-        loadedContactNote.value = remoteNote;
-        notes.value[conv.id] = remoteNote;
-        saveNotes();
+  // Busca nota do contato e histórico de etiquetas em paralelo
+  const [, msgs] = await Promise.all([
+    // Nota do contato
+    (async () => {
+      if (!localNote) {
+        const contactId = conv.meta?.sender?.id;
+        if (contactId) {
+          const remoteNote = await loadContactNote(contactId);
+          if (remoteNote) {
+            cardNote.value = remoteNote;
+            loadedContactNote.value = remoteNote;
+            notes.value[conv.id] = remoteNote;
+            saveNotes();
+          }
+        }
       }
-    }
-  }
+    })(),
+    // Histórico de etiquetas
+    axios.get(`/api/v1/accounts/${accountId.value}/conversations/${conv.id}/messages`)
+      .then(res => Array.isArray(res.data?.payload) ? res.data.payload : [])
+      .catch(() => []),
+  ]);
+
+  cardHistory.value = { loading: false, timeline: buildLabelTimeline(msgs) };
 };
 
 const closeCard = async () => {
@@ -291,6 +304,7 @@ const closeCard = async () => {
   selectedCard.value = null;
   cardNote.value = '';
   loadedContactNote.value = '';
+  cardHistory.value = { loading: false, timeline: [] };
 };
 
 const goToConversation = async () => {
@@ -793,6 +807,61 @@ const currentHistory = computed(() => historyData.value[historyConvId.value] || 
             <div v-if="selectedCard.meta?.assignee" class="flex items-center gap-1.5 text-n-slate-9">
               <span class="i-lucide-circle-user size-3.5" />
               <span class="text-xs">{{ selectedCard.meta.assignee.name }}</span>
+            </div>
+          </div>
+
+          <!-- Histórico de etiquetas -->
+          <div class="px-5 pt-4">
+            <div class="flex items-center gap-1.5 mb-2">
+              <span class="i-lucide-history size-3.5 text-n-slate-9" />
+              <span class="text-xs font-medium text-n-slate-10">Histórico de etiquetas</span>
+            </div>
+
+            <!-- Loading -->
+            <div v-if="cardHistory.loading" class="flex items-center gap-2 py-2 text-n-slate-9">
+              <span class="i-lucide-loader-circle size-3.5 animate-spin" />
+              <span class="text-xs">Carregando...</span>
+            </div>
+
+            <!-- Sem histórico -->
+            <p v-else-if="!cardHistory.timeline.length" class="text-xs text-n-slate-8 italic">
+              Nenhuma movimentação registrada ainda.
+            </p>
+
+            <!-- Timeline compacta -->
+            <div v-else class="space-y-1.5">
+              <div
+                v-for="(item, idx) in cardHistory.timeline"
+                :key="idx"
+                class="flex items-center gap-2 rounded-lg px-2.5 py-2"
+                :class="item.active ? 'bg-[var(--color-woot-500)]/8 border border-[var(--color-woot-500)]/20' : 'bg-n-solid-2 border border-n-weak'"
+              >
+                <!-- Dot colorido -->
+                <div
+                  class="size-2.5 rounded-full flex-shrink-0"
+                  :style="{ backgroundColor: labels.find(l => l.title === item.label)?.color ?? '#6b7280' }"
+                />
+                <!-- Label -->
+                <span
+                  class="text-[11px] font-medium flex-1 truncate"
+                  :style="{ color: labels.find(l => l.title === item.label)?.color ?? '#6b7280' }"
+                >{{ item.label }}</span>
+                <!-- Duração -->
+                <span
+                  class="text-xs font-semibold flex-shrink-0"
+                  :class="item.active ? 'text-[var(--color-woot-500)]' : 'text-n-slate-11'"
+                >
+                  {{ fmtDuration(item.endTs ? item.endTs - item.startTs : Math.floor(Date.now() / 1000) - item.startTs) }}
+                </span>
+                <!-- Badge ativo ou data de saída -->
+                <span
+                  v-if="item.active"
+                  class="text-[10px] text-[var(--color-woot-500)] bg-[var(--color-woot-500)]/15 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
+                >ativo</span>
+                <span v-else class="text-[10px] text-n-slate-8 flex-shrink-0 whitespace-nowrap">
+                  até {{ fmtDateTime(item.endTs) }}
+                </span>
+              </div>
             </div>
           </div>
 
