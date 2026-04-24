@@ -1,4 +1,4 @@
-# 📦 Brand Assets - SalesHub
+# 📦 Brand Assets - Charme
 
 Coloque suas imagens personalizadas nesta pasta.
 

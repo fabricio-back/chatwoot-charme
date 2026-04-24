@@ -1,33 +1,35 @@
 /* ============================================
-   SalesHub - Tema Verde Customizado
-   Primária:  #23c93e
-   Média:     #1e6d05
-   Escura:    #114f00
+   Charme — Tema Creme & Dourado
+   Creme (marca):  #f8f4ec
+   Dourado (ação): #c9973e
+   Médio:          #8d6a2b
+   Escuro:         #463516
    ============================================ */
 
 :root {
-  /* Paleta principal (woot = cor primária do Chatwoot) */
-  --color-woot:   #23c93e;
+  /* Paleta principal (woot = cor de ação do Chatwoot) */
+  --color-woot:   #c9973e;
 
-  --w-25:  #f0fdf2;
-  --w-50:  #e8fbed;
-  --w-75:  #d2f7da;
-  --w-100: #b3f0be;
-  --w-200: #86e69a;
-  --w-300: #53d96d;
-  --w-400: #33d450;
-  --w-500: #23c93e;
-  --w-600: #1eb035;
-  --w-700: #1e6d05;
-  --w-800: #165204;
-  --w-900: #114f00;
+  /* Escala creme → dourado → marrom (família warm) */
+  --w-25:  #fcfcfb;
+  --w-50:  #f9f5ed; /* creme da marca ≈ #f8f4ec */
+  --w-75:  #f7efe2;
+  --w-100: #f3e8d4;
+  --w-200: #ead7b5;
+  --w-300: #e0c28f;
+  --w-400: #d4ac65;
+  --w-500: #c9973e; /* dourado primário */
+  --w-600: #ab8035;
+  --w-700: #8d6a2b;
+  --w-800: #684f20;
+  --w-900: #463516;
 
   /* Cor de destaque (links, botões ativos, badges) */
-  --color-woot-medium: #1e6d05;
-  --color-woot-dark:   #114f00;
+  --color-woot-medium: #8d6a2b;
+  --color-woot-dark:   #463516;
 
   /* Meta color para o navegador */
-  --theme-color: #23c93e;
+  --theme-color: #c9973e;
 }
 
 /* Botões primários */
@@ -35,52 +37,52 @@
 .button.primary,
 [class*="bg-woot-500"],
 [class*="bg-woot-600"] {
-  background-color: #23c93e !important;
-  border-color: #23c93e !important;
+  background-color: #c9973e !important;
+  border-color: #c9973e !important;
 }
 
 [class*="bg-woot-700"],
 [class*="bg-woot-800"] {
-  background-color: #1e6d05 !important;
-  border-color: #1e6d05 !important;
+  background-color: #8d6a2b !important;
+  border-color: #8d6a2b !important;
 }
 
 /* Links e textos coloridos */
 [class*="text-woot-500"],
 [class*="text-woot-600"] {
-  color: #23c93e !important;
+  color: #c9973e !important;
 }
 
 [class*="text-woot-700"],
 [class*="text-woot-800"],
 [class*="text-woot-900"] {
-  color: #1e6d05 !important;
+  color: #8d6a2b !important;
 }
 
 /* Bordas e outlines */
 [class*="border-woot-500"],
 [class*="border-woot-600"] {
-  border-color: #23c93e !important;
+  border-color: #c9973e !important;
 }
 
 /* Aba ativa e indicadores */
 [class*="border-b-woot"],
 .active-tab,
 [class*="active"][class*="woot"] {
-  border-color: #23c93e !important;
-  color: #23c93e !important;
+  border-color: #c9973e !important;
+  color: #c9973e !important;
 }
 
 /* Checkbox e radio selecionados */
 input[type="checkbox"]:checked,
 input[type="radio"]:checked {
-  accent-color: #23c93e;
+  accent-color: #c9973e;
 }
 
 /* Scrollbar (navegadores webkit) */
 ::-webkit-scrollbar-thumb {
-  background-color: #86e69a;
+  background-color: #ead7b5;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #23c93e;
+  background-color: #c9973e;
 }

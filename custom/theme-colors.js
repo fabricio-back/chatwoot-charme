@@ -11,21 +11,21 @@ const {
   violetDark,
 } = require('@radix-ui/colors');
 
-// MoveisBack custom red theme replacing Chatwoot's default blue (woot) colors
+// Charme custom warm cream/gold theme replacing Chatwoot's default blue (woot) colors
 export const colors = {
   woot: {
-    25: '#fff5f5',
-    50: '#ffe0e0',
-    75: '#ffc5c5',
-    100: '#ff9090',
-    200: '#ff5c5c',
-    300: '#e02020',
-    400: '#c01010',
-    500: '#aa0101',
-    600: '#8f0101',
-    700: '#700101',
-    800: '#540101',
-    900: '#3b0000',
+    25:  '#fcfcfb',
+    50:  '#f9f5ed', // creme da marca (≈ #f8f4ec)
+    75:  '#f7efe2',
+    100: '#f3e8d4',
+    200: '#ead7b5',
+    300: '#e0c28f',
+    400: '#d4ac65',
+    500: '#c9973e', // dourado primário (ação)
+    600: '#ab8035',
+    700: '#8d6a2b',
+    800: '#684f20',
+    900: '#463516',
   },
   green: {
     50: greenDark.green12,

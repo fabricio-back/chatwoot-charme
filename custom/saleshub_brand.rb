@@ -1,4 +1,4 @@
-# SalesHub brand initializer — runs after Rails boots
+# Charme brand initializer — runs after Rails boots
 # Sets logo paths in InstallationConfig if they still point to default SVG files
 Rails.application.config.after_initialize do
   Thread.new do
@@ -20,7 +20,7 @@ Rails.application.config.after_initialize do
       sleep 3
       retry if retries < 5
     rescue StandardError => e
-      Rails.logger.warn "[SalesHub] brand initializer error: #{e.message}"
+      Rails.logger.warn "[Charme] brand initializer error: #{e.message}"
     end
   end
 end
