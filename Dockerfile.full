@@ -72,19 +72,23 @@ RUN echo "CACHEBUST=$CACHEBUST - Setting up pnpm" && \
 
 # Instalar dependências Node
 RUN echo "CACHEBUST=$CACHEBUST - Installing Node dependencies" && \
-    pnpm install --frozen-lockfile && \
+    pnpm install --no-frozen-lockfile && \
     echo "Dependencies installed at $(date)"
 
 # Build dos assets do frontend
 ENV NODE_ENV=production
 ENV RAILS_ENV=production
-# Build SDK e App (Vite via pnpm para usar a versão correta do projeto)
-RUN echo "CACHEBUST=$CACHEBUST - Building frontend assets" && \
-    date && \
+
+# Build SDK (widget embeddável)
+RUN echo "CACHEBUST=$CACHEBUST - Building SDK" && \
     pnpm run build:sdk && \
+    echo "SDK build completed at $(date)"
+
+# Build Vite (app principal)
+RUN echo "CACHEBUST=$CACHEBUST - Building Vite assets" && \
     pnpm exec vite build && \
-    echo "Build completed at $(date)" && \
-    ls -lh public/packs/ || echo "No packs directory"
+    echo "Vite build completed at $(date)" && \
+    ls -lh public/vite/
 # Stage 2: Imagem Final com Assets
 # ========================================
 FROM ghcr.io/fazer-ai/chatwoot:v4.12.0-fazer-ai.54
