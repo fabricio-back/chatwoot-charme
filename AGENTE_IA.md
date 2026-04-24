@@ -1,4 +1,4 @@
-# Guia para Agente IA — Chatwoot MoveisBack
+# Guia para Agente IA — Chatwoot Charme
 
 Documento de referência único para realizar manutenção, atualizações e personalizações neste projeto.
 
@@ -10,7 +10,7 @@ Este projeto constrói uma imagem Docker customizada sobre o fork `fazer-ai/chat
 
 **Pipeline:**
 ```
-GitHub push → GitHub Actions → Dockerfile.full (build) → ghcr.io/fabricio-back/chatwoot-moveisback:latest → Coolify (deploy)
+GitHub push → GitHub Actions → Dockerfile.full (build) → ghcr.io/fabricio-back/chatwoot-charme:latest → Coolify (auto-deploy via webhook)
 ```
 
 **Build em dois estágios (`Dockerfile.full`):**
@@ -37,7 +37,7 @@ Todos os arquivos customizados estão na pasta `custom/`. O `Dockerfile.full` co
 | `custom/Sidebar.vue` | `app/javascript/dashboard/components-next/sidebar/Sidebar.vue` | Remove itens do menu para agentes (Conexões, Projetos, etc.) |
 | `custom/InternalChat.vue` | `app/javascript/dashboard/components-next/sidebar/InternalChat.vue` | Widget de chat interno entre agentes no sidebar |
 | `custom/LoginIndex.vue` | `app/javascript/v3/views/login/Index.vue` | "Powered by verticegrowth.com" na tela de login |
-| `custom/theme-colors.js` | `theme/colors.js` | Paleta verde (`#23c93e`) no lugar do azul padrão do Chatwoot |
+| `custom/theme-colors.js` | `theme/colors.js` | Paleta creme/dourado (`#c9973e`) no lugar do azul padrão do Chatwoot |
 | `custom/conversations_getters.js` | `app/javascript/dashboard/store/modules/conversations/getters.js` | Adiciona getter `getChatGroupTypeFilter`; `getMineChats` inclui participantes |
 | `custom/conversations_helpers.js` | `app/javascript/dashboard/store/modules/conversations/helpers.js` | `applyRoleFilter` restringe agentes a assignee+participante; adiciona sort `priority_desc_created_at_asc` |
 | `custom/KanbanIndex.vue` | `app/javascript/dashboard/routes/dashboard/kanban/Index.vue` | Kanban de etiquetas completo (drag-and-drop, filtros, histórico, notas) |
@@ -58,7 +58,7 @@ Todos os arquivos customizados estão na pasta `custom/`. O `Dockerfile.full` co
 | `custom/permission_filter_service.rb` | `app/services/conversations/permission_filter_service.rb` | Agentes veem conversas onde são assignee OU participante |
 | `custom/conversation_finder.rb` | `app/finders/conversation_finder.rb` | Backend do filtro "Minhas" inclui participantes; adiciona `filter_by_group_type`, `perform_meta_only`, sort `priority_desc_created_at_asc` |
 | `custom/_conversation.json.jbuilder` | `app/views/api/v1/conversations/partials/_conversation.json.jbuilder` | Adiciona campo `is_participant` na resposta da API |
-| `custom/saleshub_brand.rb` | `config/initializers/saleshub_brand.rb` | Aplica logos no banco ao iniciar |
+| `custom/saleshub_brand.rb` | `config/initializers/saleshub_brand.rb` | Aplica logos Charme (`logo.png`, `logo_thumbnail.png`) no banco ao iniciar |
 | `custom/notification_listener.rb` | `app/listeners/notification_listener.rb` | Apenas admins recebem notificação de conversa criada |
 | `custom/search_service.rb` | `app/services/search_service.rb` | Aplica `PermissionFilterService` na busca (agentes não veem conversas de outros) |
 | `custom/internal_chat_inbox.rb` | `config/initializers/internal_chat_inbox.rb` | Cria automaticamente o inbox "Chat Interno" (Channel::Api) ao bootar |
@@ -72,7 +72,7 @@ Todos os arquivos customizados estão na pasta `custom/`. O `Dockerfile.full` co
 
 | Pasta local | Destino | O que contém |
 |---|---|---|
-| `brand-assets/` | `/app/public/brand-assets/` | `logo.png`, `logo-dark.png`, `favicon.ico` |
+| `brand-assets/` | `/app/public/brand-assets/` | `logo.png`, `logo_thumbnail.png`, `banner.png`, `custom-theme.css` |
 
 ---
 
@@ -163,7 +163,7 @@ Para lógica que precisa rodar no boot do Rails (criar registros, patches de mon
 - Toggle "Agentes veem todas as conversas" disponível no Super Admin por conta (`account_dashboard_patch.rb`)
 
 ### Tema de Cores por Conta
-- Cor padrão: `#23c93e` (verde) — definida em `custom/theme-colors.js`
+- Cor padrão: `#c9973e` (dourado Charme) — definida em `custom/theme-colors.js` e `brand-assets/custom-theme.css`
 - Cada conta pode ter cor própria via Super Admin → campo "Cor primária do tema"
 - O frontend busca a cor via `GET /account_theme/:account_id` (`account_theme_initializer.rb`)
 - O CSS dinâmico é injetado em `vueapp.html.erb`
@@ -215,18 +215,20 @@ Variáveis de ambiente obrigatórias no Coolify:
 2. git add . && git commit -m "..." && git push origin master
 3. GitHub Actions inicia build automaticamente
 4. Aguardar ~2 minutos (build com cache) ou ~20 minutos (build frio)
-5. Se build OK: acessar Coolify → serviço → Force Redeploy
+5. GitHub Actions dispara o webhook `COOLIFY_WEBHOOK_URL` automaticamente
 6. Coolify puxa a nova imagem e reinicia os containers
+   (ou manualmente: Coolify → serviço → Force Redeploy)
 ```
 
-**Verificar build:** `https://github.com/fabricio-back/chatwoot-moveisback/actions`
+**Verificar build:** `https://github.com/fabricio-back/chatwoot-charme/actions`
 
 ---
 
 ## 8. Referências Rápidas
 
-- Repo de customizações: `https://github.com/fabricio-back/chatwoot-moveisback`
+- Repo de customizações: `https://github.com/fabricio-back/chatwoot-charme`
 - Repo upstream: `https://github.com/fazer-ai/chatwoot`
 - Tags disponíveis: `https://github.com/fazer-ai/chatwoot/tags`
 - Imagens GHCR do upstream: `https://github.com/fazer-ai/chatwoot/pkgs/container/chatwoot`
-- Registry da imagem customizada: `ghcr.io/fabricio-back/chatwoot-moveisback:latest`
+- Registry da imagem customizada: `ghcr.io/fabricio-back/chatwoot-charme:latest`
+- Pacote GHCR (visibilidade/settings): `https://github.com/users/fabricio-back/packages/container/chatwoot-charme/settings`
