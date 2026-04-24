@@ -35,5 +35,13 @@ jobs:
           no-cache: true
           pull: true
           build-args: CACHEBUST=${{ github.run_id }}
-          tags: ghcr.io/fabricio-back/chatwoot-moveisback:latest
+          tags: ghcr.io/fabricio-back/chatwoot-charme:latest
+
+      - name: Disparar deploy no Coolify
+        if: ${{ secrets.COOLIFY_WEBHOOK_URL != '' }}
+        run: |
+          curl -fsSL \
+            -X GET \
+            "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
+            --retry 3 --retry-delay 5
 
