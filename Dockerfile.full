@@ -106,16 +106,12 @@ COPY --from=assets-builder /build/public/vite /app/public/vite
 COPY --from=assets-builder /build/public/packs/js/sdk.js /app/public/packs/js/sdk.js
 
 # Copiar customização do backend (Ruby)
-COPY ./custom/permission_filter_service.rb /app/app/services/conversations/permission_filter_service.rb
-COPY ./custom/conversation_finder.rb /app/app/finders/conversation_finder.rb
 COPY ./custom/_conversation.json.jbuilder /app/app/views/api/v1/conversations/partials/_conversation.json.jbuilder
 
 # Inicializador de brand (corrige logo no startup, se necessário)
 COPY ./custom/saleshub_brand.rb /app/config/initializers/saleshub_brand.rb
 # v1.12 — NotificationListener: apenas admins recebem notificação de conversa criada
 COPY ./custom/notification_listener.rb /app/app/listeners/notification_listener.rb
-# v1.13 — SearchService: aplica PermissionFilterService nas buscas
-COPY ./custom/search_service.rb /app/app/services/search_service.rb
 # Chat Interno: cria automaticamente o inbox "Chat Interno" ao iniciar o servidor
 COPY ./custom/internal_chat_inbox.rb /app/config/initializers/internal_chat_inbox.rb
 # Remove Dashboard Script do antigo kanban-backend (astraonline) do banco de dados
