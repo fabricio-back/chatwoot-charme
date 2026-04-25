@@ -14,7 +14,6 @@ import { emitter } from 'shared/helpers/mitt';
 import { BUS_EVENTS } from 'shared/constants/busEvents';
 
 import Button from 'dashboard/components-next/button/Button.vue';
-import InternalChat from './InternalChat.vue';
 import SidebarGroup from './SidebarGroup.vue';
 import SidebarProfileMenu from './SidebarProfileMenu.vue';
 import SidebarChangelogCard from './SidebarChangelogCard.vue';
@@ -86,7 +85,6 @@ const toggleShortcutModalFn = show => {
 useSidebarKeyboardShortcuts(toggleShortcutModalFn);
 
 const expandedItem = ref(null);
-const isInternalChatOpen = ref(false);
 
 const setExpandedItem = name => {
   expandedItem.value = expandedItem.value === name ? null : name;
@@ -334,6 +332,23 @@ const menuItems = computed(() => {
           })),
         },
       ],
+    },
+    {
+      name: 'InternalChat',
+      label: t('SIDEBAR.INTERNAL_CHAT'),
+      icon: 'i-lucide-messages-square',
+      to: accountScopedRoute('internal_chat_home'),
+      activeOn: [
+        'internal_chat',
+        'internal_chat_home',
+        'internal_chat_channel',
+        'internal_chat_dm',
+        'internal_chat_thread',
+        'internal_chat_drafts',
+      ],
+      getterKeys: {
+        count: 'internalChat/getUnreadCount',
+      },
     },
     {
       name: 'Captain',
@@ -880,45 +895,8 @@ const menuItems = computed(() => {
           :is-collapsed="isEffectivelyCollapsed"
           @open-key-shortcut-modal="emit('openKeyShortcutModal')"
         />
-        <!-- Chat Interno: modo expandido (com label) -->
-        <button
-          v-if="!isEffectivelyCollapsed"
-          class="flex items-center gap-1.5 px-2 h-7 rounded-lg hover:bg-n-alpha-2 transition-colors flex-shrink-0 text-xs font-medium"
-          :class="{ 'bg-n-alpha-2 text-n-brand': isInternalChatOpen, 'text-n-slate-11': !isInternalChatOpen }"
-          title="Chat Interno — mensagens entre agentes"
-          @click="isInternalChatOpen = !isInternalChatOpen"
-        >
-          <span class="i-lucide-message-square-text size-4" />
-          <span>Chats</span>
-        </button>
-        <!-- Chat Interno: modo colapsado -->
-        <button
-          v-else
-          class="flex items-center justify-center size-8 rounded-lg hover:bg-n-alpha-2 transition-colors"
-          :class="{ 'bg-n-alpha-2 text-n-brand': isInternalChatOpen, 'text-n-slate-11': !isInternalChatOpen }"
-          title="Chat Interno — mensagens entre agentes"
-          @click="isInternalChatOpen = !isInternalChatOpen"
-        >
-          <span class="i-lucide-message-square-text size-4" />
-        </button>
       </div>
     </section>
-    <!-- Chat Interno: overlay que cobre o sidebar quando aberto -->
-    <Transition
-      enter-active-class="transition-all duration-200 ease-out"
-      enter-from-class="opacity-0 translate-y-2"
-      enter-to-class="opacity-100 translate-y-0"
-      leave-active-class="transition-all duration-150 ease-in"
-      leave-from-class="opacity-100 translate-y-0"
-      leave-to-class="opacity-0 translate-y-2"
-    >
-      <div
-        v-if="isInternalChatOpen"
-        class="absolute inset-0 z-50 bg-n-background flex flex-col overflow-hidden"
-      >
-        <InternalChat @close="isInternalChatOpen = false" />
-      </div>
-    </Transition>
     <!-- Resize Handle (desktop only) -->
     <div
       class="hidden md:block absolute top-0 h-full w-1 cursor-col-resize z-40 ltr:right-0 rtl:left-0 group"

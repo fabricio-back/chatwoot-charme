@@ -19,11 +19,11 @@ RUN apk add --no-cache \
     vips-dev \
     vips-tools
 
-# Clonar repositório Chatwoot — fixado na versão 4.12.0-fazer-ai.54
+# Clonar repositório Chatwoot — fixado na versão 4.13.0-fazer-ai.61
 # Para atualizar: troque a tag abaixo, verifique os diffs dos arquivos customizados e rebuilde
 RUN echo "=== BUILD TIMESTAMP: $CACHEBUST ===" && \
-    echo "Cloning Chatwoot v4.12.0-fazer-ai.54" && \
-    git clone --depth 1 --branch v4.12.0-fazer-ai.54 https://github.com/fazer-ai/chatwoot.git . || \
+    echo "Cloning Chatwoot v4.13.0-fazer-ai.61" && \
+    git clone --depth 1 --branch v4.13.0-fazer-ai.61 https://github.com/fazer-ai/chatwoot.git . || \
     git clone --depth 1 https://github.com/fazer-ai/chatwoot.git . && \
     echo "Clone completed at $(date)"
 
@@ -31,8 +31,6 @@ RUN echo "=== BUILD TIMESTAMP: $CACHEBUST ===" && \
 # ChatList.vue NÃO é sobrescrito: v4.12 mudou de vue-virtual-scroller para virtua/vue;
 # a versão upstream já tem groupType, permissões e virtual scroll corretos.
 COPY ./custom/Sidebar.vue /build/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
-# Chat Interno entre agentes
-COPY ./custom/InternalChat.vue /build/app/javascript/dashboard/components-next/sidebar/InternalChat.vue
 # Substituir "powered by fazer.ai" por "powered by verticegrowth.com" na login
 COPY ./custom/LoginIndex.vue /build/app/javascript/v3/views/login/Index.vue
 # Substituir paleta de cores: woot azul → woot creme/dourado (Charme theme)
@@ -91,7 +89,7 @@ RUN echo "CACHEBUST=$CACHEBUST - Building Vite assets" && \
     ls -lh public/vite/
 # Stage 2: Imagem Final com Assets
 # ========================================
-FROM ghcr.io/fazer-ai/chatwoot:v4.12.0-fazer-ai.54
+FROM ghcr.io/fazer-ai/chatwoot:v4.13.0-fazer-ai.61
 
 # Metadata
 LABEL maintainer="seu-email@exemplo.com"

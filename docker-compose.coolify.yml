@@ -162,11 +162,16 @@ services:
   metabase:
     image: 'metabase/metabase:latest'
     restart: always
+    expose:
+      - '3001'
+    labels:
+      - 'traefik.http.services.metabase.loadbalancer.server.port=3001'
     volumes:
       - 'metabase_data:/metabase-data'
     environment:
       - MB_JETTY_PORT=3001
       - MB_DB_FILE=/metabase-data/metabase.db
+      - 'MB_ANTHROPIC_API_KEY=${MB_ANTHROPIC_API_KEY:-}'
     depends_on:
       - postgres
     healthcheck:
